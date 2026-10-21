@@ -14,6 +14,7 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
 ![Version](https://img.shields.io/badge/version-1.0.0-c2292f)
 ![Status](https://img.shields.io/badge/status-console--tested-3fa35b)
 ![License](https://img.shields.io/badge/license-MIT-f6eede)
+[![Ko-fi](https://img.shields.io/badge/support%20me-Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/sevyw)
 
 </div>
 
@@ -274,6 +275,10 @@ zig cc -std=c11 -DAPP_DB_PATH='"scratch/app.db"' -Ithird_party/sqlite -o test_th
 ```
 
 If something goes wrong on a console, `ux0:data/Imago/log.txt` has the details.
+
+## ☕ Support
+
+Imago is free and always will be. If it made your Vita a little more yours, you can [buy me a coffee on Ko-fi](https://ko-fi.com/sevyw). It's never expected, always appreciated. And please consider [supporting psvt.ovh](https://gofund.me/e8f1d6c4) too: it's where all these themes live.
 
 ## 🙏 Credits
 
