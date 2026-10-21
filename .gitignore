@@ -1,0 +1,10 @@
+build/
+*.vpk
+*.velf
+*.elf
+*.self
+eboot.bin
+param.sfo
+.vscode/
+build-test/
+dist/

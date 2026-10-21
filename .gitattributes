@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.png binary
+*.ttf binary
+third_party/** linguist-vendored
