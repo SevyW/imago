@@ -75,6 +75,97 @@ int themedoc_load(ThemeDoc *doc, const char *dir) {
 	return 0;
 }
 
+// --- themes made of pictures -------------------------------------------------------------
+
+// The folder of a picture becomes a picture origin; *file is its name in it.
+static int picture_origin(ThemeDoc *doc, const char *path, const char **file) {
+	const char *slash = strrchr(path, '/');
+	if (!slash || !slash[1])
+		return -1;
+	char dir[256];
+	snprintf(dir, sizeof(dir), "%.*s", (int)(slash - path), path);
+	*file = slash + 1;
+	for (int i = 0; i < doc->origin_count; i++)
+		if (doc->origin_pictures[i] && strcmp(doc->origins[i], dir) == 0)
+			return i;
+	if (doc->origin_count == THEMEDOC_MAX_ORIGINS)
+		return -1;
+	int i = doc->origin_count++;
+	snprintf(doc->origins[i], sizeof(doc->origins[i]), "%s", dir);
+	snprintf(doc->origin_titles[i], sizeof(doc->origin_titles[i]), "Your pictures");
+	doc->origin_providers[i][0] = '\0'; // your own pictures aren't credited to anyone
+	doc->origin_pictures[i] = 1;
+	return i;
+}
+
+static XmlNode *add_child(XmlNode *parent, const char *name, const char *text) {
+	XmlNode *n = xml_new(name, text);
+	if (n)
+		xml_append(parent, n);
+	return n;
+}
+
+// A file reference to a picture, owned by the picture's folder origin.
+static int add_picture_ref(ThemeDoc *doc, XmlNode *parent, const char *name, const char *picture) {
+	const char *file;
+	int origin = picture_origin(doc, picture, &file);
+	XmlNode *n = origin >= 0 ? add_child(parent, name, file) : NULL;
+	if (!n)
+		return -1;
+	n->origin = origin;
+	return 0;
+}
+
+int themedoc_from_pictures(ThemeDoc *doc, const char *const *pictures, int count, const char *lock_picture) {
+	memset(doc, 0, sizeof(*doc));
+	if (count < 0 || count > THEMEDOC_MAX_PAGES)
+		return -1;
+	const char *lock = lock_picture && lock_picture[0] ? lock_picture : count > 0 ? pictures[0] : NULL;
+	if (!lock)
+		return -1;
+	doc->root = xml_new("theme", NULL);
+	if (!doc->root)
+		return -1;
+	free(doc->root->attrs);
+	doc->root->attrs = malloc(40);
+	if (doc->root->attrs)
+		snprintf(doc->root->attrs, 40, " format-ver=\"01.00\" package=\"0\"");
+
+	// Plain defaults that read well over any picture: white text, dark bars.
+	XmlNode *start = add_child(doc->root, "StartScreenProperty", NULL);
+	XmlNode *bar = add_child(doc->root, "InfomationBarProperty", NULL);
+	XmlNode *info = add_child(doc->root, "InfomationProperty", NULL);
+	XmlNode *home_node = add_child(doc->root, "HomeProperty", NULL);
+	XmlNode *params = home_node ? add_child(home_node, "m_bgParam", NULL) : NULL;
+	int ok = start && bar && info && params && add_picture_ref(doc, start, "m_filePath", lock) == 0;
+	if (ok) {
+		add_child(start, "m_dateColor", "ffffffff");
+		add_child(start, "m_dateLayout", "1");
+		add_child(start, "m_notifyBgColor", "b4000000");
+		add_child(start, "m_notifyBorderColor", "ff505050");
+		add_child(start, "m_notifyFontColor", "ffffffff");
+		add_child(bar, "m_barColor", "ff000000");
+		add_child(bar, "m_indicatorColor", "ffffffff");
+		add_child(bar, "m_noticeFontColor", "ffffffff");
+		add_child(bar, "m_noticeGlowColor", "ff000000");
+		add_child(info, "m_contentVer", "01.00");
+		XmlNode *title = add_child(info, "m_title", NULL), *provider = add_child(info, "m_provider", NULL);
+		ok = title && provider && add_child(title, "m_default", "My pictures") &&
+		     add_child(provider, "m_default", "Imago");
+	}
+	for (int i = 0; ok && i < count; i++) {
+		XmlNode *page = add_child(params, "BackgroundParam", NULL);
+		ok = page && add_picture_ref(doc, page, "m_thumbnailFilePath", pictures[i]) == 0 &&
+		     add_picture_ref(doc, page, "m_imageFilePath", pictures[i]) == 0 &&
+		     add_child(page, "m_fontColor", "ffffffff") && add_child(page, "m_fontShadow", "1");
+	}
+	if (!ok) {
+		themedoc_free(doc);
+		return -1;
+	}
+	return 0;
+}
+
 void themedoc_free(ThemeDoc *doc) {
 	xml_free(doc->root);
 	memset(doc, 0, sizeof(*doc));
@@ -197,7 +288,8 @@ int themedoc_remove_part(ThemeDoc *doc, ThemePart part) {
 
 static int add_origin(ThemeDoc *doc, const ThemeDoc *from, int index) {
 	for (int i = 0; i < doc->origin_count; i++)
-		if (strcmp(doc->origins[i], from->origins[index]) == 0)
+		if (strcmp(doc->origins[i], from->origins[index]) == 0 &&
+		    doc->origin_pictures[i] == from->origin_pictures[index])
 			return i;
 	if (doc->origin_count == THEMEDOC_MAX_ORIGINS)
 		return -1;
@@ -205,6 +297,7 @@ static int add_origin(ThemeDoc *doc, const ThemeDoc *from, int index) {
 	snprintf(doc->origins[i], sizeof(doc->origins[i]), "%s", from->origins[index]);
 	snprintf(doc->origin_titles[i], sizeof(doc->origin_titles[i]), "%s", from->origin_titles[index]);
 	snprintf(doc->origin_providers[i], sizeof(doc->origin_providers[i]), "%s", from->origin_providers[index]);
+	doc->origin_pictures[i] = from->origin_pictures[index];
 	return i;
 }
 
@@ -275,6 +368,24 @@ int themedoc_take_part(ThemeDoc *doc, ThemePart part, const ThemeDoc *from) {
 		prepend(parent, copy);
 	else
 		xml_append(parent, copy);
+	return 0;
+}
+
+int themedoc_take_lockscreen_image(ThemeDoc *doc, const ThemeDoc *from) {
+	XmlNode *src = xml_find(from->root, "StartScreenProperty/m_filePath");
+	if (!has_text(src))
+		return -1;
+	XmlNode *start = xml_find(doc->root, "StartScreenProperty");
+	if (!start)
+		return themedoc_take_part(doc, PART_LOCKSCREEN, from);
+	XmlNode *copy = copy_from(doc, from, src);
+	if (!copy)
+		return -1;
+	XmlNode *existing = xml_find(start, "m_filePath");
+	if (existing)
+		xml_replace(start, existing, copy);
+	else
+		prepend(start, copy);
 	return 0;
 }
 
@@ -394,9 +505,13 @@ void themedoc_lockscreen_file(const ThemeDoc *doc, char *out, size_t size) {
 		out[0] = '\0';
 }
 
+// How a referenced file gets into the new theme.
+enum { CONVERT_NONE, CONVERT_WALLPAPER, CONVERT_THUMBNAIL };
+
 typedef struct {
 	char src[512];
 	char dst[96];
+	int convert;
 } FileMap;
 
 typedef struct {
@@ -459,12 +574,38 @@ static void base_name(const char *path, char *out, size_t size) {
 	out[n] = '\0';
 }
 
+// A picture's name in the theme: "IMG 0001.jpg" -> "IMG_0001.png" or
+// "IMG_0001_t.png" for its page thumbnail.
+static void converted_name(const char *src, int convert, char *out, size_t size) {
+	char name[96];
+	base_name(src, name, sizeof(name));
+	char *dot = strrchr(name, '.');
+	if (dot)
+		*dot = '\0';
+	snprintf(out, size, "%.80s%s.png", name, convert == CONVERT_THUMBNAIL ? "_t" : "");
+}
+
+// Turns a picture into a theme image: scaled to cover the size, 8-bit palette.
+static int convert_picture(const char *src, const char *dst, int convert) {
+	int w = convert == CONVERT_THUMBNAIL ? THEME_PAGE_THUMB_W : THEME_WALLPAPER_W;
+	int h = convert == CONVERT_THUMBNAIL ? THEME_PAGE_THUMB_H : THEME_WALLPAPER_H;
+	uint8_t *pixels = NULL;
+	int sw, sh;
+	if (image_load_any(src, &pixels, &sw, &sh, w, h) != 0)
+		return -1;
+	uint8_t *scaled = image_resize_cover(pixels, sw, sh, w, h);
+	free(pixels);
+	int rc = scaled ? image_save_png_indexed(dst, scaled, w, h) : -1;
+	free(scaled);
+	return rc;
+}
+
 // Writes a resized copy of `src` as a preview; falls back to copying the
 // base theme's existing preview if the image can't be decoded.
 static int make_preview(const char *src, const char *fallback, const char *dest, int w, int h) {
 	uint8_t *pixels = NULL;
 	int sw, sh, rc = -1;
-	if (src[0] && image_load_png(src, &pixels, &sw, &sh) == 0) {
+	if (src[0] && image_load_any(src, &pixels, &sw, &sh, w, h) == 0) {
 		uint8_t *scaled = image_resize_cover(pixels, sw, sh, w, h);
 		if (scaled)
 			rc = image_save_png(dest, scaled, w, h);
@@ -526,19 +667,26 @@ int themedoc_write(const ThemeDoc *doc, const char *dest_dir, int new_previews, 
 			xml_set_text(n, ""); // some published themes reference icons they don't ship
 			continue;
 		}
+		int convert = !doc->origin_pictures[n->origin]             ? CONVERT_NONE
+		              : strcmp(n->name, "m_thumbnailFilePath") == 0 ? CONVERT_THUMBNAIL
+		                                                            : CONVERT_WALLPAPER;
 		int found = -1;
 		for (int m = 0; m < mapped; m++)
-			if (strcmp(map[m].src, src) == 0)
+			if (strcmp(map[m].src, src) == 0 && map[m].convert == convert)
 				found = m;
 		if (found < 0) {
 			char name[96], candidate[96];
-			base_name(src, name, sizeof(name));
+			if (convert)
+				converted_name(src, convert, name, sizeof(name));
+			else
+				base_name(src, name, sizeof(name));
 			snprintf(candidate, sizeof(candidate), "%s", name);
 			for (int k = 1; name_taken(map, mapped, candidate); k++)
 				snprintf(candidate, sizeof(candidate), "o%d_%d_%s", n->origin, k, name);
 			found = mapped++;
 			snprintf(map[found].src, sizeof(map[found].src), "%s", src);
 			snprintf(map[found].dst, sizeof(map[found].dst), "%s", candidate);
+			map[found].convert = convert;
 		}
 		xml_set_text(n, map[found].dst);
 	}
@@ -556,9 +704,19 @@ int themedoc_write(const ThemeDoc *doc, const char *dest_dir, int new_previews, 
 	for (int m = 0; rc == 0 && m < mapped; m++) {
 		char dst[640];
 		snprintf(dst, sizeof(dst), "%s/%s", dest_dir, map[m].dst);
+		if (map[m].convert) {
+			if (convert_picture(map[m].src, dst, map[m].convert) != 0) {
+				char msg[200];
+				const char *slash = strrchr(map[m].src, '/');
+				snprintf(msg, sizeof(msg), "Couldn't use the picture %s (only JPEG and PNG pictures work).",
+				         slash ? slash + 1 : map[m].src);
+				set_err(err, err_size, msg);
+				rc = -1;
+			}
+		}
 		// A file the source theme itself is missing stays missing; anything
 		// else that fails to copy is a real error.
-		if (fs_exists(map[m].src) && fs_copy_file(map[m].src, dst) != 0) {
+		else if (fs_exists(map[m].src) && fs_copy_file(map[m].src, dst) != 0) {
 			set_err(err, err_size, "Could not copy the theme's files (is the memory card full?).");
 			rc = -1;
 		}

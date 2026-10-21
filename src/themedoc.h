@@ -25,11 +25,24 @@ typedef struct {
 	char origins[THEMEDOC_MAX_ORIGINS][256];   // source theme folders
 	char origin_titles[THEMEDOC_MAX_ORIGINS][128];
 	char origin_providers[THEMEDOC_MAX_ORIGINS][64];
+	// Folders of pictures from the memory card rather than themes: their
+	// files are converted to theme images when the theme is written.
+	unsigned char origin_pictures[THEMEDOC_MAX_ORIGINS];
 } ThemeDoc;
+
+// Theme image sizes, as published themes use them.
+#define THEME_WALLPAPER_W 960
+#define THEME_WALLPAPER_H 512
+#define THEME_PAGE_THUMB_W 360
+#define THEME_PAGE_THUMB_H 192
 
 const char *themedoc_part_name(ThemePart part);
 
 int themedoc_load(ThemeDoc *doc, const char *dir);
+// A complete minimal theme made from pictures (JPEG or PNG paths): one
+// wallpaper page per picture, and lock_picture (or the first page) as the
+// lock screen. Either may be empty, not both.
+int themedoc_from_pictures(ThemeDoc *doc, const char *const *pictures, int count, const char *lock_picture);
 void themedoc_free(ThemeDoc *doc);
 // A deep copy (for editing without touching the original).
 int themedoc_copy(ThemeDoc *dst, const ThemeDoc *src);
@@ -45,6 +58,9 @@ int themedoc_part_origin(const ThemeDoc *doc, ThemePart part);
 int themedoc_remove_part(ThemeDoc *doc, ThemePart part);
 // Replaces a part with a copy of the same part from another theme.
 int themedoc_take_part(ThemeDoc *doc, ThemePart part, const ThemeDoc *from);
+// Replaces only the lock screen picture, keeping this theme's clock and
+// notification colours.
+int themedoc_take_lockscreen_image(ThemeDoc *doc, const ThemeDoc *from);
 // Credits every theme whose parts are used: "akane, MajorTom87".
 void themedoc_credit(const ThemeDoc *doc, char *out, size_t size);
 

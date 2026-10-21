@@ -1,7 +1,10 @@
 // Assets: every wallpaper, icon set, song and lock screen of the installed
-// themes, with previews, to build a brand-new theme from.
+// themes, and the pictures on the memory card, with previews, to build a
+// brand-new theme from.
 #include "app.h"
 #include "assets.h"
+#include "dialog.h"
+#include "pictures.h"
 #include "images.h"
 #include "jobs.h"
 #include "music.h"
@@ -26,16 +29,19 @@
 #define VIEW_H (GRID_BOTTOM - GRID_TOP)
 #define MAX_WALLPAPERS 10
 
-static const char *const kind_names[ASSET_KIND_COUNT] = {"Wallpapers", "Icons", "Music", "Lock screens"};
+static const char *const kind_names[ASSET_KIND_COUNT] = {"Wallpapers", "Icons", "Music", "Lock screens", "Pictures"};
 
 static AssetIndex index_;
 static int scanning, scanned_generation = -1;
+static int pictures_stale; // new screenshots may exist since the last visit
+static int index_generation, menu_generation; // a menu only applies to the index it was opened on
 static AssetKind kind;
 static int selected[ASSET_KIND_COUNT];
 static float scroll, scroll_target;
 static int on_chips;
 static int picked_pages[MAX_WALLPAPERS], picked_page_count; // asset indices, in pick order
-static int picked[ASSET_KIND_COUNT] = {-1, -1, -1, -1};    // icons / music / lock: asset index or -1
+static int picked[ASSET_KIND_COUNT] = {-1, -1, -1, -1, -1}; // icons / music / lock: asset index or -1
+static int menu_asset;                                       // the picture an open menu refers to
 static int viewer = -1;                                     // asset shown full screen
 static float chip_x[ASSET_KIND_COUNT], chip_w[ASSET_KIND_COUNT];
 
@@ -66,16 +72,22 @@ static void scan_done(void *ctx) {
 	index_ = job->result;
 	scanned_generation = job->generation;
 	scanning = 0;
-	clear_picks(); // indices refer to the old index
-	for (int k = 0; k < ASSET_KIND_COUNT; k++)
-		selected[k] = 0;
+	clear_picks(); // indices refer to the old index (the update loop clamps selections)
+	viewer = -1;
+	index_generation++;
 	free(job->items);
 	free(job);
 }
 
+static int total_picks(void);
+
 static void ensure_index(void) {
-	if (scanning || scanned_generation == g_library_generation || g_library_loading)
+	// Picks refer to the current index, so new pictures only show up once
+	// nothing is picked.
+	int stale = scanned_generation != g_library_generation || (pictures_stale && total_picks() == 0);
+	if (scanning || !stale || g_library_loading)
 		return;
+	pictures_stale = 0;
 	ScanJob *job = calloc(1, sizeof(*job));
 	if (!job)
 		return;
@@ -111,17 +123,50 @@ static int page_pick_number(int asset) {
 	return 0;
 }
 
+static int is_picture(int asset) {
+	return asset >= 0 && index_.items[asset].kind == ASSET_PICTURES;
+}
+
+// "IMG_0001.jpg" for a picture, the theme's title otherwise.
+static const char *asset_title(const Asset *a) {
+	if (a->kind != ASSET_PICTURES)
+		return index_.themes[a->theme].title;
+	const char *slash = strrchr(a->file, '/');
+	return slash ? slash + 1 : a->file;
+}
+
+static void toggle_wallpaper(int asset) {
+	int n = page_pick_number(asset);
+	if (n) {
+		memmove(picked_pages + n - 1, picked_pages + n, sizeof(int) * (size_t)(picked_page_count - n));
+		picked_page_count--;
+	} else if (picked_page_count == MAX_WALLPAPERS) {
+		app_toast("A theme can have up to 10 wallpapers");
+	} else {
+		picked_pages[picked_page_count++] = asset;
+	}
+}
+
+static void on_picture_menu(int choice) {
+	if (menu_generation != index_generation || menu_asset >= index_.count)
+		return; // the index was rebuilt while the menu was open
+	if (choice == 0)
+		toggle_wallpaper(menu_asset);
+	else if (choice == 1)
+		picked[ASSET_LOCKSCREENS] = picked[ASSET_LOCKSCREENS] == menu_asset ? -1 : menu_asset;
+}
+
 static void toggle_pick(int asset) {
 	if (kind == ASSET_WALLPAPERS) {
-		int n = page_pick_number(asset);
-		if (n) {
-			memmove(picked_pages + n - 1, picked_pages + n, sizeof(int) * (size_t)(picked_page_count - n));
-			picked_page_count--;
-		} else if (picked_page_count == MAX_WALLPAPERS) {
-			app_toast("A theme can have up to 10 wallpapers");
-		} else {
-			picked_pages[picked_page_count++] = asset;
-		}
+		toggle_wallpaper(asset);
+	} else if (kind == ASSET_PICTURES) {
+		menu_asset = asset;
+		menu_generation = index_generation;
+		const char *options[2] = {
+			page_pick_number(asset) ? "Don't use as a wallpaper" : "Use as a wallpaper",
+			picked[ASSET_LOCKSCREENS] == asset ? "Don't use as the lock screen" : "Use as the lock screen",
+		};
+		dialog_menu(asset_title(&index_.items[asset]), options, 2, 0, on_picture_menu);
 	} else {
 		picked[kind] = picked[kind] == asset ? -1 : asset;
 	}
@@ -143,37 +188,67 @@ static int load_theme(ThemeDoc *docs, int *loaded, int theme) {
 	return 0;
 }
 
-// Builds a theme from the picks: the first pick's theme supplies everything
-// not picked (status bar, page dots...), and each pick is layered on top.
+// Builds a theme from the picks: the first picked theme part's theme supplies
+// everything not picked (status bar, page dots...), and each pick is layered
+// on top. Picked pictures become pages (and the lock screen) of a theme made
+// of pictures, which is the base when nothing else was picked.
 static void create_theme(void) {
-	int base_asset = picked_page_count ? picked_pages[0]
-	                 : picked[ASSET_LOCKSCREENS] >= 0 ? picked[ASSET_LOCKSCREENS]
-	                 : picked[ASSET_ICONS] >= 0       ? picked[ASSET_ICONS]
-	                                                  : picked[ASSET_MUSIC];
-	if (base_asset < 0) {
-		app_toast("Pick a few wallpapers, icons, music or a lock screen first");
+	if (total_picks() == 0) {
+		app_toast("Pick a few wallpapers, pictures, icons, music or a lock screen first");
 		return;
 	}
+	const char *pictures[MAX_WALLPAPERS];
+	int picture_page[MAX_WALLPAPERS], picture_count = 0, base_theme = -1;
+	for (int i = 0; i < picked_page_count; i++) {
+		const Asset *a = &index_.items[picked_pages[i]];
+		if (a->kind == ASSET_PICTURES) {
+			picture_page[i] = picture_count;
+			pictures[picture_count++] = a->file;
+		} else if (base_theme < 0) {
+			base_theme = a->theme;
+		}
+	}
+	int lock = picked[ASSET_LOCKSCREENS];
+	const char *lock_picture = is_picture(lock) ? index_.items[lock].file : NULL;
+	if (lock_picture && picture_count == 0 && base_theme < 0 && picked_page_count == 0)
+		pictures[picture_count++] = lock_picture; // a theme needs a wallpaper: use the same picture
+	static const AssetKind fallbacks[3] = {ASSET_LOCKSCREENS, ASSET_ICONS, ASSET_MUSIC};
+	for (int k = 0; k < 3 && base_theme < 0; k++)
+		if (picked[fallbacks[k]] >= 0 && !is_picture(picked[fallbacks[k]]))
+			base_theme = index_.items[picked[fallbacks[k]]].theme;
+
 	int n = index_.theme_count;
-	ThemeDoc *docs = calloc((size_t)n, sizeof(ThemeDoc));
-	int *loaded = calloc((size_t)n, sizeof(int));
-	ThemeDoc result;
-	int ok = docs && loaded && load_theme(docs, loaded, index_.items[base_asset].theme) == 0 &&
-	         themedoc_copy(&result, &docs[index_.items[base_asset].theme]) == 0;
+	ThemeDoc *docs = calloc(n > 0 ? (size_t)n : 1, sizeof(ThemeDoc));
+	int *loaded = calloc(n > 0 ? (size_t)n : 1, sizeof(int));
+	ThemeDoc pics = {0}, result = {0};
+	int ok = docs && loaded;
+	if (ok && (picture_count || lock_picture))
+		ok = themedoc_from_pictures(&pics, pictures, picture_count, lock_picture) == 0;
+	if (ok)
+		ok = base_theme >= 0 ? load_theme(docs, loaded, base_theme) == 0 &&
+		                           themedoc_copy(&result, &docs[base_theme]) == 0
+		                     : themedoc_copy(&result, &pics) == 0;
 	if (ok && picked_page_count) {
 		const ThemeDoc *froms[MAX_WALLPAPERS];
 		int pages[MAX_WALLPAPERS];
 		for (int i = 0; ok && i < picked_page_count; i++) {
 			const Asset *a = &index_.items[picked_pages[i]];
-			ok = load_theme(docs, loaded, a->theme) == 0;
-			froms[i] = &docs[a->theme];
-			pages[i] = a->page;
+			if (a->kind == ASSET_PICTURES) {
+				froms[i] = &pics;
+				pages[i] = picture_page[i];
+			} else {
+				ok = load_theme(docs, loaded, a->theme) == 0;
+				froms[i] = &docs[a->theme];
+				pages[i] = a->page;
+			}
 		}
 		ok = ok && themedoc_set_pages(&result, froms, pages, picked_page_count) == 0;
 	}
+	if (ok && lock_picture)
+		ok = themedoc_take_lockscreen_image(&result, &pics) == 0;
 	static const ThemePart parts[ASSET_KIND_COUNT] = {PART_WALLPAPERS, PART_ICONS, PART_MUSIC, PART_LOCKSCREEN};
-	for (int k = 1; ok && k < ASSET_KIND_COUNT; k++) {
-		if (picked[k] < 0)
+	for (int k = 1; ok && k <= ASSET_LOCKSCREENS; k++) {
+		if (picked[k] < 0 || is_picture(picked[k]))
 			continue;
 		int theme = index_.items[picked[k]].theme;
 		ok = load_theme(docs, loaded, theme) == 0 && themedoc_take_part(&result, parts[k], &docs[theme]) == 0;
@@ -183,7 +258,9 @@ static void create_theme(void) {
 			themedoc_free(&docs[i]);
 	free(docs);
 	free(loaded);
+	themedoc_free(&pics);
 	if (!ok) {
+		themedoc_free(&result);
 		app_toast("Couldn't put that theme together");
 		return;
 	}
@@ -226,6 +303,7 @@ static void preview(int asset) {
 void assets_screen_leave(void) {
 	music_stop();
 	viewer = -1;
+	pictures_stale = 1;
 }
 
 void assets_screen_update(const Input *in) {
@@ -260,12 +338,13 @@ void assets_screen_update(const Input *in) {
 		}
 		if ((in->repeat & SCE_CTRL_DOWN) && *sel + COLS < count)
 			*sel += COLS;
-		if ((in->pressed & BTN_OK) && count > 0)
+		// While a rescan runs, the index on screen is about to be replaced.
+		if ((in->pressed & BTN_OK) && count > 0 && !scanning)
 			toggle_pick(kind_start(kind) + *sel);
-		else if ((in->pressed & SCE_CTRL_SQUARE) && count > 0)
+		else if ((in->pressed & SCE_CTRL_SQUARE) && count > 0 && !scanning)
 			preview(kind_start(kind) + *sel);
 	}
-	if (in->pressed & SCE_CTRL_TRIANGLE)
+	if ((in->pressed & SCE_CTRL_TRIANGLE) && !scanning)
 		create_theme();
 	else if (in->pressed & SCE_CTRL_SELECT)
 		clear_picks();
@@ -283,9 +362,10 @@ void assets_screen_update(const Input *in) {
 			if (col >= 0 && col < COLS && i < count && cy - (float)row * PITCH <= CARD_H) {
 				*sel = i;
 				on_chips = 0;
-				toggle_pick(kind_start(kind) + i);
+				if (!scanning)
+					toggle_pick(kind_start(kind) + i);
 			}
-		} else if (y >= BAR_Y && y <= BAR_Y + 42.0f && x > SCREEN_W - 260) {
+		} else if (y >= BAR_Y && y <= BAR_Y + 42.0f && x > SCREEN_W - 260 && !scanning) {
 			create_theme();
 		}
 	}
@@ -305,7 +385,7 @@ void assets_screen_update(const Input *in) {
 // --- drawing ------------------------------------------------------------------------
 
 static void draw_image(const char *path, float x, float y, float w, float h, float r_bottom) {
-	ImageRef img = images_file(path);
+	ImageRef img = images_file_sized(path, IMAGES_CARD_WIDTH);
 	if (img.tex)
 		ui_image(img.tex, x, y, w, h, 14, 14, r_bottom, r_bottom, RGBA8(255, 255, 255, (int)(255 * img.alpha)));
 }
@@ -326,7 +406,7 @@ static void draw_check(float cx, float cy) {
 static void draw_card(int i, float x, float y) {
 	int asset = kind_start(kind) + i;
 	const Asset *a = &index_.items[asset];
-	const AssetTheme *t = &index_.themes[a->theme];
+	const AssetTheme *t = a->theme >= 0 ? &index_.themes[a->theme] : NULL;
 	int focused = !on_chips && selected[kind] == i;
 	if (focused)
 		ui_shadow(x, y, CARD_W, CARD_H, 14.0f, 1.0f);
@@ -364,7 +444,9 @@ static void draw_card(int i, float x, float y) {
 	}
 
 	char label[160], fitted[160];
-	if (a->kind == ASSET_WALLPAPERS)
+	if (a->kind == ASSET_PICTURES)
+		snprintf(label, sizeof(label), "%s \xC2\xB7 %s", a->folder, asset_title(a));
+	else if (a->kind == ASSET_WALLPAPERS)
 		snprintf(label, sizeof(label), "%s \xC2\xB7 %d", t->title, a->page + 1);
 	else if (a->kind == ASSET_ICONS)
 		snprintf(label, sizeof(label), "%s \xC2\xB7 %d icons", t->title, t->icon_count);
@@ -373,10 +455,12 @@ static void draw_card(int i, float x, float y) {
 	ui_text_fit(FONT_SMALL, label, (int)CARD_W - 20, fitted, sizeof(fitted));
 	ui_text(FONT_SMALL, x + 10.0f, y + IMAGE_H + 22.0f, C_TEXT2, fitted);
 
-	if (a->kind == ASSET_WALLPAPERS) {
+	if (a->kind == ASSET_WALLPAPERS || a->kind == ASSET_PICTURES) {
 		int number = page_pick_number(asset);
 		if (number)
 			draw_badge_number(x + CARD_W - 18.0f, y + 18.0f, number);
+		if (picked[ASSET_LOCKSCREENS] == asset) // a picture picked as the lock screen
+			ui_badge(x + 10.0f, y + 10.0f, "LOCK SCREEN", C_ACCENT, C_ON_ACCENT);
 	} else if (picked[a->kind] == asset) {
 		draw_check(x + CARD_W - 18.0f, y + 18.0f);
 	}
@@ -387,7 +471,7 @@ static void draw_card(int i, float x, float y) {
 
 static void draw_viewer(void) {
 	const Asset *a = &index_.items[viewer];
-	const AssetTheme *t = &index_.themes[a->theme];
+	const AssetTheme *t = a->theme >= 0 ? &index_.themes[a->theme] : NULL;
 	ui_rect(0, 0, SCREEN_W, SCREEN_H, RGBA8(0, 0, 0, 235));
 	if (a->kind == ASSET_ICONS) {
 		ui_text_center(FONT_TITLE, SCREEN_W * 0.5f, 70.0f, C_TEXT, t->title);
@@ -408,7 +492,10 @@ static void draw_viewer(void) {
 		else
 			ui_spinner(SCREEN_W * 0.5f, SCREEN_H * 0.5f, 16.0f, C_ACCENT);
 		char label[200];
-		snprintf(label, sizeof(label), "%s \xC2\xB7 %s", t->title, t->provider);
+		if (t)
+			snprintf(label, sizeof(label), "%s \xC2\xB7 %s", t->title, t->provider);
+		else
+			snprintf(label, sizeof(label), "%s \xC2\xB7 %s", a->folder, asset_title(a));
 		int w = ui_text_width(FONT_BODY, label);
 		ui_rrect(20.0f, 20.0f, (float)w + 28.0f, 34.0f, 17.0f, RGBA8(0, 0, 0, 170));
 		ui_text(FONT_BODY, 34.0f, 42.0f, C_TEXT, label);
@@ -433,8 +520,14 @@ void assets_screen_draw(void) {
 	}
 
 	int count = kind_count(kind);
+	if (scanning && index_.count > 0)
+		ui_spinner(SCREEN_W - MARGIN - 10.0f, CHIP_Y + CHIP_H * 0.5f, 8.0f, C_ACCENT);
 	if (scanning && index_.count == 0) {
 		ui_spinner(SCREEN_W * 0.5f, GRID_TOP + 120.0f, 14.0f, C_ACCENT);
+	} else if (count == 0 && kind == ASSET_PICTURES) {
+		ui_text_center(FONT_TITLE, SCREEN_W * 0.5f, GRID_TOP + 110.0f, C_TEXT, "No pictures yet");
+		ui_text_center(FONT_BODY, SCREEN_W * 0.5f, GRID_TOP + 140.0f, C_TEXT2,
+		               "Take screenshots, or copy JPEG or PNG pictures to " PICTURES_DIR);
 	} else if (count == 0) {
 		ui_text_center(FONT_TITLE, SCREEN_W * 0.5f, GRID_TOP + 110.0f, C_TEXT,
 		               index_.theme_count ? "Nothing here yet" : "No themes installed yet");
@@ -457,11 +550,12 @@ void assets_screen_draw(void) {
 	ui_rrect(MARGIN, BAR_Y, SCREEN_W - 2 * MARGIN, 42.0f, 14.0f, C_SURFACE);
 	char summary[256], part[96];
 	snprintf(summary, sizeof(summary), "%d wallpaper%s", picked_page_count, picked_page_count == 1 ? "" : "s");
-	static const char *const short_names[ASSET_KIND_COUNT] = {"", "icons", "music", "lock screen"};
-	for (int k = 1; k < ASSET_KIND_COUNT; k++) {
+	static const char *const short_names[ASSET_KIND_COUNT] = {"", "icons", "music", "lock screen", ""};
+	for (int k = 1; k <= ASSET_LOCKSCREENS; k++) {
 		if (picked[k] < 0)
 			continue;
-		snprintf(part, sizeof(part), " \xC2\xB7 %s: %s", short_names[k], index_.themes[index_.items[picked[k]].theme].title);
+		snprintf(part, sizeof(part), " \xC2\xB7 %s: %s", short_names[k],
+		         asset_title(&index_.items[picked[k]]));
 		strncat(summary, part, sizeof(summary) - strlen(summary) - 1);
 	}
 	char fitted[256];
@@ -484,6 +578,6 @@ void assets_screen_draw(void) {
 	if (total_picks())
 		hints[n++] = (Hint){GLYPH_SELECT, "Clear picks"};
 	hints[n++] = (Hint){GLYPH_SQUARE, kind == ASSET_MUSIC ? "Play / stop" : "Preview"};
-	hints[n++] = (Hint){ui_ok_glyph(), "Pick"};
+	hints[n++] = (Hint){ui_ok_glyph(), kind == ASSET_PICTURES ? "Use..." : "Pick"};
 	app_footer(hints, n, NULL);
 }

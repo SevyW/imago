@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_OPTIONS 8
+#define MAX_OPTIONS 40
+#define VISIBLE_ROWS 7 // longer menus scroll
 #define WIDTH 540.0f
 #define PAD 26.0f
 #define ROW_H 46.0f
@@ -18,6 +19,7 @@ static char title[128];
 static char message[512];
 static char options[MAX_OPTIONS][64];
 static int option_count, focus;
+static int first_row; // first menu row shown
 static int destructive;
 static DialogFn callback;
 static float appear; // 0..1 open animation
@@ -30,6 +32,7 @@ static void open_dialog(Kind k, const char *t, DialogFn fn) {
 	message[0] = '\0';
 	option_count = 0;
 	focus = 0;
+	first_row = 0;
 	destructive = 0;
 	callback = fn;
 	appear = 0.0f;
@@ -42,6 +45,7 @@ void dialog_menu(const char *t, const char *const *opts, int count, int selected
 	for (int i = 0; i < option_count; i++)
 		snprintf(options[i], sizeof(options[i]), "%s", opts[i]);
 	focus = selected >= 0 && selected < option_count ? selected : 0;
+	first_row = focus >= VISIBLE_ROWS ? focus - VISIBLE_ROWS + 1 : 0;
 }
 
 void dialog_confirm(const char *t, const char *msg, const char *confirm_label, int is_destructive,
@@ -80,10 +84,14 @@ static float message_height(void) {
 	return (float)(lines * 23) + 10.0f;
 }
 
+static int visible_rows(void) {
+	return option_count < VISIBLE_ROWS ? option_count : VISIBLE_ROWS;
+}
+
 static float body_height(void) {
 	float h = PAD + 30.0f + message_height();
 	if (kind == KIND_MENU)
-		h += (float)option_count * ROW_H + 6.0f;
+		h += (float)visible_rows() * ROW_H + 6.0f;
 	else
 		h += 18.0f + BUTTON_H;
 	return h + PAD;
@@ -107,8 +115,10 @@ static int hit_option(int tx, int ty) {
 	for (int i = 0; i < option_count; i++) {
 		float x, y, w, h;
 		if (kind == KIND_MENU) {
+			if (i < first_row || i >= first_row + visible_rows())
+				continue;
 			x = cx + 12.0f;
-			y = cy + PAD + 30.0f + message_height() + (float)i * ROW_H;
+			y = cy + PAD + 30.0f + message_height() + (float)(i - first_row) * ROW_H;
 			w = WIDTH - 24.0f;
 			h = ROW_H;
 		} else {
@@ -153,6 +163,10 @@ void dialog_update(const Input *in) {
 		focus--;
 	if ((in->repeat & next) && focus < option_count - 1)
 		focus++;
+	if (focus < first_row)
+		first_row = focus;
+	if (focus >= first_row + VISIBLE_ROWS)
+		first_row = focus - VISIBLE_ROWS + 1;
 	if (in->pressed & BTN_OK)
 		close_with(choice_for(focus));
 	else if (in->pressed & BTN_BACK)
@@ -191,8 +205,8 @@ void dialog_draw(void) {
 
 	if (kind == KIND_MENU) {
 		y += 8.0f;
-		for (int i = 0; i < option_count; i++) {
-			float ry = y + (float)i * ROW_H;
+		for (int i = first_row; i < first_row + visible_rows(); i++) {
+			float ry = y + (float)(i - first_row) * ROW_H;
 			int danger = options[i][0] == '!';
 			const char *label = danger ? options[i] + 1 : options[i];
 			if (i == focus)
@@ -201,6 +215,17 @@ void dialog_draw(void) {
 			ui_text(FONT_BOLD, cx + PAD + 4.0f, ry + 27.0f, ui_alpha(color, a), label);
 			if (i == focus)
 				ui_glyph(ui_ok_glyph(), cx + WIDTH - PAD - 12.0f, ry + (ROW_H - 4.0f) * 0.5f, a);
+		}
+		// Chevrons when there are more options above or below.
+		float mx = cx + WIDTH * 0.5f;
+		if (first_row > 0) {
+			ui_line(mx - 8.0f, y - 2.0f, mx, y - 8.0f, 2.0f, ui_alpha(C_TEXT3, a));
+			ui_line(mx, y - 8.0f, mx + 8.0f, y - 2.0f, 2.0f, ui_alpha(C_TEXT3, a));
+		}
+		if (first_row + visible_rows() < option_count) {
+			float by = y + (float)visible_rows() * ROW_H + 2.0f;
+			ui_line(mx - 8.0f, by, mx, by + 6.0f, 2.0f, ui_alpha(C_TEXT3, a));
+			ui_line(mx, by + 6.0f, mx + 8.0f, by, 2.0f, ui_alpha(C_TEXT3, a));
 		}
 		return;
 	}

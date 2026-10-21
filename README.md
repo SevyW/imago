@@ -50,10 +50,12 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
 | 🔍 **Search, tags and authors** | Search with □. On any theme, tap a tag or *More by …* to filter the grid. ○ goes back to exactly where you were (same scroll, same theme highlighted) and SELECT jumps back to the start. |
 | ⬇️ **Background installs** | Press Install and keep browsing. Installs queue up, and progress shows on the card, in the detail view and in the header. |
 | 🔄 **Knows what's installed** | Cards are badged **INSTALLED**, **UPDATE** or **NEW**. Themes installed by Imago remember the exact version they came from, so updates are detected. |
-| 📚 **Library** | Uninstall, remove from the system list but keep the files, re-add theme folders already on your card (one at a time or all at once), and check every theme for updates. |
+| 📚 **Library** | Your themes in a grid. Uninstall, remove from the system list but keep the files, re-add theme folders already on your card (one at a time or all at once), and check every theme for updates. |
+| 🗂️ **Folders** | Sort your themes into your own folders (*Anime*, *Retro*, *Favourites*...): **✕ › Move to folder** on any theme. Folders show a preview of their first themes, and SELECT renames or deletes one. They're Imago's alone, so the system theme list is never touched. |
 | 🎛️ **Customize any theme** | Pick which wallpapers to keep, switch the music and custom icons off, rename it, and save it as a new theme. The original stays untouched, and the previews are redrawn from your new first wallpaper. |
 | 📚 **Asset library** | The **Assets** tab shows every wallpaper, icon set, song and lock screen across your installed themes. Preview them full screen, play the music right on the Vita, pick the parts you like (wallpapers from several themes, one page at a time), and press △ to turn them into a brand-new theme. |
 | 🧪 **Mix themes** | In Theme Studio, press △ on any part (wallpapers, music, icons, lock screen, status bar) to take it from another installed theme. Every author whose parts you use is credited in the new theme. |
+| 📸 **Your own pictures** | Screenshots, photos and any JPEG or PNG on your memory card can become wallpapers or the lock screen: from the **Pictures** shelf in Assets, or **Your pictures** in Theme Studio. Imago resizes them to the Vita's 960×512 and saves them in the 8-bit format themes use. |
 | 💾 **Careful with the system** | Backs up the system theme list before changing it, checks it for damage first, and never deletes anything outside a `customtheme` folder. More below. |
 | 📂 **Install anywhere** | `ux0:`, `ur0:` or `uma0:`, using the same `customtheme` folders as Custom Themes Manager, so themes from either app show up in both. |
 | 🎮 **Feels native** | D-pad, analog stick and touch (tap and drag). ○/✕ follow your console's confirm-button setting, and the PS button is locked only while the database is being written. |
@@ -145,14 +147,16 @@ Each release's notes list what changed, what to test, and how to recover if some
 
 | Button | Discover | Theme details | Library |
 |---|---|---|---|
-| ✕ | Open theme | Activate | Theme options |
-| ○ | Back to the previous grid | Back | — |
+| ✕ | Open theme | Activate | Theme options · open a folder |
+| ○ | Back to the previous grid | Back | Out of a folder |
 | △ | Sort | More by this author | Check for updates |
 | □ | Search | — | Add local themes |
-| SELECT | Back to the start | — | — |
+| SELECT | Back to the start | — | Rename or delete a folder |
 | L / R | Switch tabs | | |
 
-**Assets tab:** ✕ pick · □ preview (play / stop for music) · △ create a theme from the picks · SELECT clear the picks. **Theme Studio:** ✕ change · △ take this part from another theme · ○ back.
+**Assets tab:** ✕ pick (on a picture: use it as a wallpaper or the lock screen) · □ preview (play / stop for music) · △ create a theme from the picks · SELECT clear the picks. **Theme Studio:** ✕ change · △ take this part from another theme or from your pictures · ○ back. **Choosing pictures:** L / R switch folders · ✕ pick · □ preview · △ use the picked pictures.
+
+**Where Imago finds pictures:** everything in the Photos app's folder (`ux0:picture`, where screenshots go) and in `ux0:data/Imago/pictures`, which Imago creates for pictures you copy from a PC with VitaShell.
 
 On Japanese consoles ✕ and ○ are swapped, as the system does. Touch works everywhere: tap to open, drag to scroll.
 
@@ -223,7 +227,7 @@ flowchart LR
 
 *Every wallpaper, icon and song you own, in one place.* The **Assets** tab.
 
-- Imago indexes all installed themes and shows their parts as shelves: **Wallpapers**, **Icons**, **Music**, **Lock screens**.
+- Imago indexes all installed themes and shows their parts as shelves: **Wallpapers**, **Icons**, **Music**, **Lock screens**, plus a **Pictures** shelf with your own screenshots and photos.
 - Preview everything before using it: full-screen wallpapers, icon sets side by side, and music played right on the Vita.
 - Build a **brand-new theme** by picking parts from the shelves; it uses the same machinery as the mixer.
 
@@ -233,7 +237,7 @@ flowchart LR
 
 | Path | What's in it |
 |---|---|
-| [`src/`](src/) | The app (C). `psvt.c` reads the site, `tasks.c` installs and builds themes, `themedb.c` handles the system theme list, `unzip.c` extracts, `themedoc.c` reads and rewrites `theme.xml`, `assets.c` indexes the asset library, `music.c` plays ATRAC9 music, and `ui.c` plus the `screen_*.c` files draw the interface. |
+| [`src/`](src/) | The app (C). `psvt.c` reads the site, `tasks.c` installs and builds themes, `themedb.c` handles the system theme list, `unzip.c` extracts, `themedoc.c` reads and rewrites `theme.xml`, `assets.c` indexes the asset library, `pictures.c` finds your pictures and `imageio.c` turns them into theme images, `folders.c` keeps your Library folders, `music.c` plays ATRAC9 music, and `ui.c` plus the `screen_*.c` files draw the interface. |
 | [`tests/`](tests/) | Unit tests that run on a PC: site parsing, zip extraction, theme files and the database layer. |
 | [`assets/brand/`](assets/brand/) | The source artwork by Sevy: the ghost icon and the IMAGO key art. |
 | [`tools/`](tools/) | Scripts that generate the app's artwork from `assets/brand/` and this README's hero image (from a public-domain PS Vita photo in `tools/assets/`). |
@@ -263,7 +267,8 @@ The parts that can hurt a console are tested on a PC with any C11 compiler (thes
 |---|---|
 | `tests/test_psvt.c` | Parsing real list and theme pages: titles, hashes, downloads, tags, scores, dates; URL encoding; HTML entities |
 | `tests/test_install.c` | Extracting a real 6.7 MB theme and a nested zip; CRC checks; progress and cancel; skipping `../` and macOS junk; `theme.xml`; folder-name and path validation |
-| `tests/test_themedoc.c` | Reading, editing and rebuilding 16 real themes from four different theme tools; toggling music, icons and pages; mixing every part between themes; building a theme from single pages of several themes; lock screen images; regenerated previews; dropping dangling icons; refusing `../` file references; parsing every theme's ATRAC9 music |
+| `tests/test_themedoc.c` | Reading, editing and rebuilding 16 real themes from four different theme tools; toggling music, icons and pages; mixing every part between themes; building a theme from single pages of several themes; lock screen images; themes made from pictures, and pictures mixed into a theme (960×512 and 360×192 8-bit PNGs, odd file names, a file that isn't a picture); regenerated previews; dropping dangling icons; refusing `../` file references; parsing every theme's ATRAC9 music |
+| `tests/test_folders.c` | Creating, renaming and deleting folders; unique names; moving themes in and out; surviving a reload; the 32-folder limit; a damaged folders file |
 | `tests/test_themedb.c` | Writing `tbl_theme` on a mock schema; localized columns; apostrophes; trailing-slash ids; the live-journal guard; backup and restore round trip; refusing a damaged backup without touching `app.db` |
 
 ```sh
@@ -272,6 +277,11 @@ zig cc -std=c11 -I<zlib> -o test_install tests/test_install.c src/unzip.c src/fs
   <zlib>/{adler32,crc32,inflate,inftrees,inffast,zutil}.c && ./test_install theme.zip nested.zip scratch/
 zig cc -std=c11 -DAPP_DB_PATH='"scratch/app.db"' -Ithird_party/sqlite -o test_themedb tests/test_themedb.c \
   src/themedb.c src/fs.c src/theme.c src/psvt.c third_party/sqlite/sqlite3.c && ./test_themedb
+zig cc -std=c11 -I<libpng> -I<zlib> -o test_themedoc tests/test_themedoc.c tests/jpeg_stub.c src/themedoc.c \
+  src/xmltree.c src/imageio.c src/fs.c src/theme.c src/psvt.c src/at9.c src/unzip.c <libpng and zlib sources> \
+  && ./test_themedoc scratch/ theme1.zip theme2.zip theme3.zip
+zig cc -std=c11 -DFOLDERS_FILE='"scratch/folders.txt"' -o test_folders tests/test_folders.c src/folders.c \
+  src/fs.c && ./test_folders
 ```
 
 If something goes wrong on a console, `ux0:data/Imago/log.txt` has the details.

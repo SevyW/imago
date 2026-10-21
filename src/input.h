@@ -23,3 +23,7 @@ extern uint32_t BTN_OK, BTN_BACK;
 
 void input_init(void);
 void input_update(Input *in);
+#ifdef IMAGO_AUTOPILOT
+// The current frame number if autopilot.txt asks for a screenshot of it.
+unsigned input_autopilot_shot(void);
+#endif

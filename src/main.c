@@ -2,6 +2,7 @@
 #include "app.h"
 #include "config.h"
 #include "dialog.h"
+#include "folders.h"
 #include "fs.h"
 #include "images.h"
 #include "ime.h"
@@ -330,6 +331,31 @@ static void draw_splash(void) {
 		ui_spinner(SCREEN_W - 36.0f, SCREEN_H - 36.0f, 9.0f, ui_alpha(C_TEXT2, a));
 }
 
+#ifdef IMAGO_AUTOPILOT
+#include "imageio.h"
+// Test builds: copies the finished frame to a PNG when autopilot.txt asks.
+static void save_autopilot_shot(void) {
+	unsigned frame = input_autopilot_shot();
+	if (!frame)
+		return;
+	vita2d_wait_rendering_done();
+	const uint32_t *fb = vita2d_get_current_fb();
+	uint32_t *copy = malloc(SCREEN_W * SCREEN_H * 4);
+	if (!fb || !copy) {
+		free(copy);
+		return;
+	}
+	for (int y = 0; y < SCREEN_H; y++) // vita2d's framebuffer rows are 1024 pixels
+		for (int x = 0; x < SCREEN_W; x++)
+			copy[y * SCREEN_W + x] = fb[y * 1024 + x] | 0xFF000000u; // RGBA bytes; force opaque
+	char path[96];
+	fs_mkdir_p(DATA_DIR "/shots");
+	snprintf(path, sizeof(path), DATA_DIR "/shots/%06u.png", frame);
+	image_save_png(path, (const uint8_t *)copy, SCREEN_W, SCREEN_H);
+	free(copy);
+}
+#endif
+
 // --- main -------------------------------------------------------------------------
 
 static void init_system(void) {
@@ -359,6 +385,7 @@ int main(void) {
 	fs_mkdir_p(DATA_DIR);
 	log_init();
 	config_load();
+	folders_load();
 	input_init();
 	net_init();
 	jobs_init(2);
@@ -418,6 +445,9 @@ int main(void) {
 		dialog_draw();
 		draw_splash();
 		vita2d_end_drawing();
+#ifdef IMAGO_AUTOPILOT
+		save_autopilot_shot();
+#endif
 		vita2d_common_dialog_update();
 		vita2d_swap_buffers();
 	}

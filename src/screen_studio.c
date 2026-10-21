@@ -4,6 +4,7 @@
 #include "dialog.h"
 #include "images.h"
 #include "ime.h"
+#include "picture_picker.h"
 #include "tasks.h"
 #include "themedoc.h"
 
@@ -48,6 +49,9 @@ static int music_on, icons_on;
 static int focus;
 static int strip_active, strip_focus;
 static int is_new; // built from the asset library: always redraw previews
+static int previews_dirty;   // pictures were added: the previews must be redrawn
+static int pictures_in_pages; // how many pages are your own pictures
+static int lock_from_picture; // the lock screen is one of your pictures
 static float strip_scroll;
 
 static int picking; // the picker is open for picker_part
@@ -74,6 +78,7 @@ int studio_open_doc(void *doc_ptr, const char *new_name, int new_theme) {
 	work = *doc;
 	memset(doc, 0, sizeof(*doc)); // ownership moved here
 	is_new = new_theme;
+	previews_dirty = pictures_in_pages = lock_from_picture = 0;
 	snprintf(base_dir, sizeof(base_dir), "%s", work.origins[0]);
 	if (new_theme)
 		snprintf(base_title, sizeof(base_title), "New theme");
@@ -143,7 +148,7 @@ static ThemePart row_part(int row) {
 
 // Parts not taken from the base theme, or edited, need new previews.
 static int changes_previews(void) {
-	return is_new || kept_pages() < page_count || themedoc_part_origin(&work, PART_WALLPAPERS) > 0 ||
+	return is_new || previews_dirty || kept_pages() < page_count || themedoc_part_origin(&work, PART_WALLPAPERS) > 0 ||
 	       themedoc_part_origin(&work, PART_LOCKSCREEN) > 0;
 }
 
@@ -184,16 +189,29 @@ static void save(void) {
 
 // --- picker -------------------------------------------------------------------------
 
+// Wallpapers and the lock screen can also come from your own pictures, offered
+// as the first row of the picker.
+static int pictures_row(void) {
+	return picker_part == PART_WALLPAPERS || picker_part == PART_LOCKSCREEN;
+}
+
 static int picker_count(void) {
-	return g_library.count;
+	return g_library.count + pictures_row();
+}
+
+static const LibraryItem *picker_item(int i) {
+	i -= pictures_row();
+	return i >= 0 ? &g_library.items[i] : NULL;
 }
 
 static int picker_usable(int i) {
-	return g_library.items[i].has_files;
+	const LibraryItem *it = picker_item(i);
+	return !it || it->has_files;
 }
 
 static void open_picker(ThemePart part) {
-	if (g_library.count == 0) {
+	int offers_pictures = part == PART_WALLPAPERS || part == PART_LOCKSCREEN;
+	if (g_library.count == 0 && !offers_pictures) {
 		app_toast("Install a few more themes to mix parts from them");
 		return;
 	}
@@ -203,8 +221,72 @@ static void open_picker(ThemePart part) {
 	picker_scroll = 0.0f;
 }
 
+// New pages from pictures go after the kept pages.
+static void add_picture_pages(const char *const *paths, int count) {
+	if (count == 0)
+		return;
+	ThemeDoc pics;
+	if (themedoc_from_pictures(&pics, paths, count, NULL) != 0) {
+		app_toast("Couldn't use those pictures");
+		return;
+	}
+	if (kept_pages() < page_count) {
+		themedoc_keep_pages(&work, page_keep, page_count);
+		reset_pages(); // the work doc changed, even if adding fails below
+	}
+	int kept = themedoc_page_count(&work), total = kept + count;
+	const ThemeDoc *froms[THEMEDOC_MAX_PAGES];
+	int pages[THEMEDOC_MAX_PAGES];
+	for (int i = 0; i < total && i < THEMEDOC_MAX_PAGES; i++) {
+		froms[i] = i < kept ? &work : &pics;
+		pages[i] = i < kept ? i : i - kept;
+	}
+	if (total > THEMEDOC_MAX_PAGES || themedoc_set_pages(&work, froms, pages, total) != 0) {
+		app_toast("Couldn't add those pictures (too many themes mixed?)");
+	} else {
+		reset_pages();
+		pictures_in_pages += count;
+		previews_dirty = 1;
+		strip_active = 1;
+		strip_focus = kept;
+	}
+	themedoc_free(&pics);
+}
+
+static void use_lock_picture(const char *const *paths, int count) {
+	if (count == 0)
+		return;
+	ThemeDoc pics;
+	if (themedoc_from_pictures(&pics, NULL, 0, paths[0]) != 0 || themedoc_take_lockscreen_image(&work, &pics) != 0) {
+		app_toast("Couldn't use that picture");
+	} else {
+		lock_from_picture = 1;
+		previews_dirty = 1;
+		focus = ROW_LOCKSCREEN;
+	}
+	themedoc_free(&pics);
+}
+
+static void take_from_pictures(void) {
+	picking = 0;
+	if (picker_part == PART_LOCKSCREEN) {
+		picture_picker_open("Choose a lock screen picture", 1, use_lock_picture);
+		return;
+	}
+	int room = THEMEDOC_MAX_PAGES - kept_pages();
+	if (room <= 0) {
+		app_toast("A theme can have up to 10 wallpapers. Turn one off first.");
+		return;
+	}
+	picture_picker_open("Add your pictures as wallpapers", room, add_picture_pages);
+}
+
 static void take_from(int index) {
-	const LibraryItem *it = &g_library.items[index];
+	if (!picker_item(index)) {
+		take_from_pictures();
+		return;
+	}
+	const LibraryItem *it = picker_item(index);
 	ThemeDoc other;
 	if (themedoc_load(&other, it->dir) != 0) {
 		app_toast("Couldn't read that theme");
@@ -217,8 +299,12 @@ static void take_from(int index) {
 	} else if (themedoc_take_part(&work, picker_part, &other) != 0) {
 		app_toast("Couldn't take that part (too many themes mixed?)");
 	} else {
-		if (picker_part == PART_WALLPAPERS)
+		if (picker_part == PART_WALLPAPERS) {
 			reset_pages();
+			pictures_in_pages = 0;
+		}
+		if (picker_part == PART_LOCKSCREEN)
+			lock_from_picture = 0;
 		if (picker_part == PART_MUSIC)
 			music_on = 1;
 		if (picker_part == PART_ICONS)
@@ -310,6 +396,10 @@ void studio_update(const Input *in) {
 		char text[128];
 		if (ime_poll(text, sizeof(text)) == 1 && text[0])
 			snprintf(name, sizeof(name), "%s", text);
+		return;
+	}
+	if (picture_picker_is_open()) {
+		picture_picker_update(in);
 		return;
 	}
 	if (picking) {
@@ -427,16 +517,28 @@ static void draw_picker(float a) {
 	float list_y = py + 64.0f;
 	vita2d_enable_clipping();
 	vita2d_set_clip_rectangle((int)px, (int)list_y - 4, (int)(px + PICK_W), (int)(list_y + PICK_ROWS * PICK_ROW_H) + 4);
-	for (int i = 0; i < g_library.count; i++) {
+	for (int i = 0; i < picker_count(); i++) {
 		float y = list_y + (float)i * PICK_ROW_H - picker_scroll;
 		if (y + PICK_ROW_H < list_y - 4 || y > list_y + PICK_ROWS * PICK_ROW_H)
 			continue;
-		const LibraryItem *it = &g_library.items[i];
+		const LibraryItem *it = picker_item(i);
 		int usable = picker_usable(i);
 		float fade = usable ? 1.0f : 0.45f;
 		if (i == picker_focus)
 			ui_rrect(px + 12.0f, y, PICK_W - 24.0f, PICK_ROW_H - 6.0f, 12.0f, ui_alpha(C_SURFACE3, a));
 		ui_rrect(px + 20.0f, y + 5.0f, 76.0f, 42.0f, 6.0f, ui_alpha(C_SURFACE2, a));
+		if (!it) { // your pictures: a little mountain-and-sun photo icon
+			float ix = px + 58.0f, iy = y + 26.0f;
+			ui_rrect_outline(ix - 16.0f, iy - 11.0f, 32.0f, 22.0f, 4.0f, 2.0f, ui_alpha(C_TEXT2, a));
+			ui_line(ix - 12.0f, iy + 8.0f, ix - 3.0f, iy - 2.0f, 2.0f, ui_alpha(C_TEXT2, a));
+			ui_line(ix - 3.0f, iy - 2.0f, ix + 5.0f, iy + 8.0f, 2.0f, ui_alpha(C_TEXT2, a));
+			vita2d_draw_fill_circle(ix + 7.0f, iy - 4.0f, 3.0f, ui_alpha(C_ACCENT, a));
+			ui_text(FONT_BOLD, px + 110.0f, y + 23.0f, ui_alpha(C_TEXT, a), "Your pictures");
+			ui_text(FONT_SMALL, px + 110.0f, y + 42.0f, ui_alpha(C_TEXT3, a),
+			        picker_part == PART_WALLPAPERS ? "Add screenshots and photos as new pages"
+			                                       : "Use a screenshot or photo");
+			continue;
+		}
 		if (it->thumb[0]) {
 			ImageRef img = images_file(it->thumb);
 			if (img.tex)
@@ -507,7 +609,7 @@ void studio_draw(void) {
 			continue;
 		ui_rrect(tx, ty, THUMB_W, THUMB_H, 8.0f, ui_alpha(C_SURFACE2, a));
 		if (themedoc_page_file(&work, i, 1, path, sizeof(path)) == 0) {
-			ImageRef img = images_file(path);
+			ImageRef img = images_file_sized(path, IMAGES_CARD_WIDTH);
 			int v = page_keep[i] ? 255 : 80;
 			if (img.tex)
 				ui_image(img.tex, tx, ty, THUMB_W, THUMB_H, 8, 8, 8, 8, RGBA8(v, v, v, (int)(255 * a * img.alpha)));
@@ -527,6 +629,8 @@ void studio_draw(void) {
 	char value[200], note[160];
 	draw_row(ROW_NAME, "Name", name, 0, a);
 	origin_note(PART_WALLPAPERS, note, sizeof(note));
+	if (pictures_in_pages)
+		snprintf(note, sizeof(note), " \xC2\xB7 with your pictures");
 	snprintf(value, sizeof(value), "%d of %d pages%s", kept_pages(), page_count, note);
 	draw_row(ROW_WALLPAPERS, "Wallpapers", value, 0, a);
 
@@ -549,7 +653,7 @@ void studio_draw(void) {
 
 	origin_note(PART_LOCKSCREEN, note, sizeof(note));
 	snprintf(value, sizeof(value), "%s%s", note[0] ? "Mixed in" : "Original", note);
-	draw_row(ROW_LOCKSCREEN, "Lock screen", value, 0, a);
+	draw_row(ROW_LOCKSCREEN, "Lock screen", lock_from_picture ? "Your picture" : value, 0, a);
 	origin_note(PART_STATUSBAR, note, sizeof(note));
 	snprintf(value, sizeof(value), "%s%s", note[0] ? "Mixed in" : "Original", note);
 	draw_row(ROW_STATUSBAR, "Status bar & notifications", value, 0, a);
@@ -561,7 +665,9 @@ void studio_draw(void) {
 	ui_text_center(FONT_SMALL, COL_X + COL_W * 0.5f, SAVE_Y + SAVE_H + 20.0f, ui_alpha(C_TEXT3, a),
 	               "The original theme stays as it is");
 
-	if (picking) {
+	if (picture_picker_is_open()) {
+		picture_picker_draw();
+	} else if (picking) {
 		draw_picker(a);
 		Hint hints[] = {{ui_back_glyph(), "Cancel"}, {ui_ok_glyph(), "Take"}};
 		app_footer(hints, 2, NULL);

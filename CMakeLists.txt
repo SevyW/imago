@@ -44,6 +44,7 @@ add_executable(${PROJECT_NAME}
   src/screen_assets.c
   src/config.c
   src/dialog.c
+  src/folders.c
   src/fs.c
   src/images.c
   src/ime.c
@@ -63,11 +64,20 @@ add_executable(${PROJECT_NAME}
   src/themedoc.c
   src/xmltree.c
   src/imageio.c
+  src/jpegio.c
+  src/pictures.c
+  src/picture_picker.c
   src/themedb.c
   src/ui.c
   src/unzip.c
   src/vita_vfs.c
 )
+
+# vita-elf-create appends the module's import tables (about 4 KB) right after
+# the code segment; if the data segment starts closer than that, the tool
+# corrupts its own memory and crashes, depending on the code size. Reserve
+# headroom with the hook the toolchain's linker script provides.
+target_link_options(${PROJECT_NAME} PRIVATE -Wl,--defsym,__sce_headroom=0x4000)
 
 target_link_libraries(${PROJECT_NAME}
   sqlite3

@@ -5,6 +5,7 @@
 #include "log.h"
 #include "net.h"
 #include "psvt.h"
+#include "ui.h"
 
 #include <psp2/kernel/processmgr.h>
 #include <pthread.h>
@@ -28,7 +29,8 @@ typedef enum { SLOT_FREE, SLOT_QUEUED, SLOT_LOADING, SLOT_READY, SLOT_FAILED } S
 typedef struct {
 	char key[80];
 	char url[256];  // empty for local files
-	char path[256]; // cache file, or the local source file
+	char path[384]; // cache file, or the local source file
+	int max_width;  // local files: decode at most about this wide (0 = full size)
 	SlotState state;
 	vita2d_texture *tex;
 	unsigned last_used;
@@ -62,7 +64,9 @@ static void jpeg_fail(j_common_ptr info) {
 	longjmp(((JpegError *)info->err)->jump, 1);
 }
 
-static vita2d_texture *decode_jpeg(const unsigned char *data, size_t size) {
+// max_width 0 keeps photos at least screen-sized; otherwise they're decoded
+// as small as possible while staying at least max_width wide.
+static vita2d_texture *decode_jpeg(const unsigned char *data, size_t size, int max_width) {
 	struct jpeg_decompress_struct info;
 	JpegError err;
 	vita2d_texture *volatile tex = NULL;
@@ -77,6 +81,14 @@ static vita2d_texture *decode_jpeg(const unsigned char *data, size_t size) {
 	jpeg_create_decompress(&info);
 	jpeg_mem_src(&info, data, (unsigned long)size);
 	jpeg_read_header(&info, TRUE);
+	// Photos from the memory card can be huge: decode them at 1/2, 1/4 or 1/8
+	// scale, as long as the result still covers the screen.
+	unsigned min_w = max_width > 0 ? (unsigned)max_width : SCREEN_W, min_h = max_width > 0 ? 1 : SCREEN_H;
+	unsigned denom = 1;
+	while (denom < 8 && info.image_width / (denom * 2) >= min_w && info.image_height / (denom * 2) >= min_h)
+		denom *= 2;
+	info.scale_num = 1;
+	info.scale_denom = denom;
 	info.out_color_space = JCS_EXT_RGBA; // matches vita2d's default ABGR texture layout
 	info.dct_method = JDCT_IFAST;
 	jpeg_start_decompress(&info);
@@ -101,7 +113,32 @@ static vita2d_texture *decode_jpeg(const unsigned char *data, size_t size) {
 // truncated file (theme thumbnails come from untrusted zips). libpng's
 // simplified API is bounded and keeps its error handling (setjmp) inside
 // libpng, so no jmp_buf ever crosses the library boundary.
-static vita2d_texture *decode_png(const unsigned char *data, size_t size) {
+// Averages factor x factor blocks of an RGBA image into a texture.
+static vita2d_texture *shrink_into_texture(const uint8_t *src, int w, int h, int factor) {
+	int dw = w / factor, dh = h / factor;
+	vita2d_texture *tex = vita2d_create_empty_texture((unsigned)dw, (unsigned)dh);
+	if (!tex)
+		return NULL;
+	uint8_t *dst = vita2d_texture_get_datap(tex);
+	unsigned stride = vita2d_texture_get_stride(tex);
+	unsigned n = (unsigned)(factor * factor);
+	for (int y = 0; y < dh; y++) {
+		uint8_t *out = dst + (size_t)y * stride;
+		for (int x = 0; x < dw; x++) {
+			unsigned sum[4] = {0, 0, 0, 0};
+			for (int yy = 0; yy < factor; yy++) {
+				const uint8_t *row = src + ((size_t)(y * factor + yy) * w + (size_t)x * factor) * 4;
+				for (int xx = 0; xx < factor * 4; xx++)
+					sum[xx & 3] += row[xx];
+			}
+			for (int c = 0; c < 4; c++)
+				out[x * 4 + c] = (uint8_t)(sum[c] / n);
+		}
+	}
+	return tex;
+}
+
+static vita2d_texture *decode_png(const unsigned char *data, size_t size, int max_width) {
 	png_image image;
 	memset(&image, 0, sizeof(image));
 	image.version = PNG_IMAGE_VERSION;
@@ -109,6 +146,19 @@ static vita2d_texture *decode_png(const unsigned char *data, size_t size) {
 		return NULL;
 	vita2d_texture *tex = NULL;
 	image.format = PNG_FORMAT_RGBA; // vita2d's default texture layout
+	int factor = max_width > 0 ? (int)image.width / max_width : 1;
+	if (factor >= 2 && image.width <= 4096 && image.height <= 4096) {
+		// A big picture shown small: decode, then shrink, so grids of
+		// screenshots don't fill memory with full-size textures.
+		uint8_t *pixels = malloc(PNG_IMAGE_SIZE(image));
+		if (pixels && png_image_finish_read(&image, NULL, pixels, 0, NULL))
+			tex = shrink_into_texture(pixels, (int)image.width, (int)image.height, factor);
+		free(pixels);
+		png_image_free(&image);
+		if (!tex)
+			log_write("image: PNG error: %s", image.message[0] ? image.message : "unsupported image");
+		return tex;
+	}
 	if (image.width > 0 && image.height > 0 && image.width <= 4096 && image.height <= 4096)
 		tex = vita2d_create_empty_texture(image.width, image.height);
 	// For 8-bit RGBA the row stride is given in bytes (one byte per component).
@@ -123,12 +173,12 @@ static vita2d_texture *decode_png(const unsigned char *data, size_t size) {
 	return tex;
 }
 
-static vita2d_texture *decode(const unsigned char *data, size_t size) {
+static vita2d_texture *decode(const unsigned char *data, size_t size, int max_width) {
 	vita2d_texture *tex = NULL;
 	if (size > 3 && data[0] == 0xFF && data[1] == 0xD8)
-		tex = decode_jpeg(data, size);
+		tex = decode_jpeg(data, size, max_width);
 	else if (size > 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G')
-		tex = decode_png(data, size);
+		tex = decode_png(data, size, max_width);
 	if (tex)
 		vita2d_texture_set_filters(tex, SCE_GXM_TEXTURE_FILTER_LINEAR, SCE_GXM_TEXTURE_FILTER_LINEAR);
 	return tex;
@@ -138,7 +188,7 @@ static vita2d_texture *load(Slot *job, NetClient *net) {
 	char *data = NULL;
 	size_t size = 0;
 	if (fs_read_file(job->path, &data, &size) == 0 && size > 0) {
-		vita2d_texture *tex = decode((unsigned char *)data, size);
+		vita2d_texture *tex = decode((unsigned char *)data, size, job->max_width);
 		if (!tex)
 			log_write("image: could not decode %s", job->path);
 		free(data);
@@ -152,7 +202,7 @@ static vita2d_texture *load(Slot *job, NetClient *net) {
 		log_write("image: %s: %s", job->url, net_error(net));
 		return NULL;
 	}
-	vita2d_texture *tex = decode((unsigned char *)data, size);
+	vita2d_texture *tex = decode((unsigned char *)data, size, 0);
 	if (tex)
 		fs_write_file(job->path, data, size);
 	else
@@ -258,7 +308,7 @@ static Slot *claim_slot(void) {
 	return victim;
 }
 
-static ImageRef request(const char *key, const char *url, const char *path) {
+static ImageRef request(const char *key, const char *url, const char *path, int max_width) {
 	ImageRef ref = {NULL, 0.0f, 0};
 	pthread_mutex_lock(&lock);
 	Slot *s = NULL;
@@ -277,6 +327,7 @@ static ImageRef request(const char *key, const char *url, const char *path) {
 		snprintf(s->key, sizeof(s->key), "%s", key);
 		snprintf(s->url, sizeof(s->url), "%s", url ? url : "");
 		snprintf(s->path, sizeof(s->path), "%s", path);
+		s->max_width = max_width;
 		s->state = SLOT_QUEUED;
 		pthread_cond_signal(&wake);
 	}
@@ -298,17 +349,21 @@ ImageRef images_remote(const char *hash, int width) {
 	snprintf(key, sizeof(key), "%s@%d", hash, width);
 	psvt_preview_url(url, sizeof(url), hash, width);
 	snprintf(path, sizeof(path), CACHE_DIR "/%s_%d.jpg", hash, width);
-	return request(key, url, path);
+	return request(key, url, path, 0);
 }
 
-ImageRef images_file(const char *path) {
+ImageRef images_file_sized(const char *path, int max_width) {
 	char key[80];
 	// Paths can be long; a hash keeps keys unique and short.
 	unsigned long h = 5381;
 	for (const char *p = path; *p; p++)
 		h = h * 33 + (unsigned char)*p;
-	snprintf(key, sizeof(key), "file:%08lx:%.50s", h, path + (strlen(path) > 50 ? strlen(path) - 50 : 0));
-	return request(key, NULL, path);
+	snprintf(key, sizeof(key), "file%d:%08lx:%.50s", max_width, h, path + (strlen(path) > 50 ? strlen(path) - 50 : 0));
+	return request(key, NULL, path, max_width);
+}
+
+ImageRef images_file(const char *path) {
+	return images_file_sized(path, 0);
 }
 
 void images_clear_disk_cache(void) {

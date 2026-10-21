@@ -1,8 +1,11 @@
-// Library: installed and local themes, with uninstall and update actions.
+// Library: installed and local themes in a grid, organised into your own
+// folders, with uninstall, update, customise and move actions.
 #include "app.h"
 #include "dialog.h"
+#include "folders.h"
 #include "fs.h"
 #include "images.h"
+#include "ime.h"
 #include "jobs.h"
 #include "tasks.h"
 
@@ -11,12 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LIST_TOP (HEADER_H + 56.0f)
-#define LIST_BOTTOM (FOOTER_Y - 8.0f)
-#define ROW_H 84.0f
-#define ROW_GAP 10.0f
-#define THUMB_W 128.0f
-#define THUMB_H 72.0f
 #define MAX_UPDATES 256
 
 static int selected;
@@ -125,9 +122,9 @@ static void check_updates(void) {
 
 // --- actions --------------------------------------------------------------------
 
-enum { ACT_UNINSTALL, ACT_REMOVE_ENTRY, ACT_UPDATE, ACT_REGISTER, ACT_DELETE_FILES, ACT_CUSTOMIZE };
-static int action_ids[7];
-static const char *action_labels[7];
+enum { ACT_UNINSTALL, ACT_REMOVE_ENTRY, ACT_UPDATE, ACT_REGISTER, ACT_DELETE_FILES, ACT_CUSTOMIZE, ACT_MOVE };
+static int action_ids[8];
+static const char *action_labels[8];
 static int action_count;
 
 static void add_action(int id, const char *label) {
@@ -135,6 +132,8 @@ static void add_action(int id, const char *label) {
 	action_labels[action_count] = label;
 	action_count++;
 }
+
+static void open_move_menu(void);
 
 static void show_unsafe_message(void) {
 	dialog_message("Unsafe homebrew is disabled",
@@ -185,21 +184,22 @@ static void on_action(int choice) {
 	case ACT_CUSTOMIZE:
 		studio_open(action_item.dir);
 		break;
+	case ACT_MOVE:
+		open_move_menu();
+		break;
 	}
 }
 
+// Organising into folders works without write access to the system; the
+// other actions need it (the banner above the grid says how to get it).
 static void open_actions(const LibraryItem *it) {
-	if (!g_db_writable) {
-		show_unsafe_message();
-		return;
-	}
 	action_item = *it;
 	action_count = 0;
-	if (!it->registered) {
+	if (g_db_writable && !it->registered) {
 		add_action(ACT_REGISTER, "Add to system themes");
 		if (it->deletable)
 			add_action(ACT_DELETE_FILES, "!Delete files");
-	} else {
+	} else if (g_db_writable) {
 		if (it->has_files)
 			add_action(ACT_CUSTOMIZE, "Customize or mix...");
 		if (has_update(it))
@@ -208,6 +208,7 @@ static void open_actions(const LibraryItem *it) {
 			add_action(ACT_UNINSTALL, "!Uninstall");
 		add_action(ACT_REMOVE_ENTRY, it->has_files ? "Remove from system only (keep files)" : "!Remove broken entry");
 	}
+	add_action(ACT_MOVE, "Move to folder...");
 	dialog_menu(it->title, action_labels, action_count, 0, on_action);
 }
 
@@ -229,22 +230,219 @@ static void on_confirm_register_all(int choice) {
 		register_all();
 }
 
-// --- input & drawing ------------------------------------------------------------
+// --- folders ----------------------------------------------------------------------
 
-static float max_scroll(void) {
-	float h = (float)g_library.count * (ROW_H + ROW_GAP) - ROW_GAP + 24.0f;
-	float m = h - (LIST_BOTTOM - LIST_TOP);
-	return m > 0 ? m : 0;
+// What the keyboard is open for.
+enum { NAME_NONE, NAME_NEW_FOLDER, NAME_RENAME_FOLDER };
+static int naming, naming_folder;
+static int open_folder = -1;    // the folder being shown, or -1 for the top level
+static int return_selected;     // the folder card to land on when leaving it
+static int menu_folder;         // the folder an open folder menu refers to
+static int move_targets[FOLDERS_MAX + 2];
+
+static void move_to(int folder) {
+	if (folders_move(action_item.dir, folder) != 0) {
+		app_toast("Couldn't move it: too many themes in folders");
+		return;
+	}
+	char text[160];
+	if (folder >= 0)
+		snprintf(text, sizeof(text), "Moved to \"%s\"", folders_name(folder));
+	else
+		snprintf(text, sizeof(text), "Moved out of the folder");
+	app_toast(text);
+}
+
+static void on_move(int choice) {
+	if (choice < 0)
+		return;
+	int target = move_targets[choice];
+	if (target == -2) {
+		naming = NAME_NEW_FOLDER;
+		ime_open("Name of the new folder", "", FOLDER_NAME_MAX - 1);
+	} else {
+		move_to(target);
+	}
+}
+
+static void open_move_menu(void) {
+	static const char *labels[FOLDERS_MAX + 2];
+	int n = 0, current = folders_of(action_item.dir);
+	labels[n] = "New folder...";
+	move_targets[n++] = -2;
+	for (int f = 0; f < folders_count(); f++) {
+		if (f == current)
+			continue;
+		labels[n] = folders_name(f);
+		move_targets[n++] = f;
+	}
+	if (current >= 0) {
+		labels[n] = "Take it out of the folder";
+		move_targets[n++] = -1;
+	}
+	dialog_menu("Move to folder", labels, n, 0, on_move);
+}
+
+static void on_confirm_delete_folder(int choice) {
+	if (choice != 0)
+		return;
+	folders_delete(menu_folder);
+	app_toast("Folder deleted. Its themes are back in your Library.");
+}
+
+static void on_folder_menu(int choice) {
+	char message[200];
+	if (choice == 0) {
+		naming = NAME_RENAME_FOLDER;
+		naming_folder = menu_folder;
+		ime_open("Rename folder", folders_name(menu_folder), FOLDER_NAME_MAX - 1);
+	} else if (choice == 1) {
+		snprintf(message, sizeof(message),
+		         "The themes in \"%s\" go back to the top of your Library. Nothing is uninstalled.",
+		         folders_name(menu_folder));
+		dialog_confirm("Delete folder?", message, "Delete", 1, on_confirm_delete_folder);
+	}
+}
+
+static void open_folder_menu(int folder) {
+	static const char *const options[] = {"Rename...", "!Delete folder"};
+	menu_folder = folder;
+	dialog_menu(folders_name(folder), options, 2, 0, on_folder_menu);
+}
+
+static void finish_naming(const char *text) {
+	if (naming == NAME_NEW_FOLDER) {
+		int f = folders_create(text);
+		if (f < 0)
+			app_toast(folders_count() == FOLDERS_MAX ? "You can have up to 32 folders"
+			                                         : "There's already a folder with that name");
+		else
+			move_to(f);
+	} else if (naming == NAME_RENAME_FOLDER) {
+		if (folders_rename(naming_folder, text) != 0)
+			app_toast("There's already a folder with that name");
+	}
+	naming = NAME_NONE;
+}
+
+// --- the grid -----------------------------------------------------------------------
+
+#define COLS 4
+#define GAP 16.0f
+#define CARD_W ((SCREEN_W - 2 * MARGIN - (COLS - 1) * GAP) / COLS)
+#define IMAGE_H ((float)(int)(CARD_W * 128.0f / 226.0f))
+#define CARD_H (IMAGE_H + 54.0f)
+#define PITCH (CARD_H + 16.0f)
+#define GRID_BOTTOM (FOOTER_Y - 8.0f)
+
+// A cell: a folder (top level only) or a theme.
+typedef struct {
+	int folder; // >= 0 for a folder card
+	int item;   // index into g_library.items for a theme card
+} Cell;
+
+static Cell *cells;
+static int cell_count, cell_capacity;
+static int *item_folder; // folder of each library item, worked out once per frame
+static int item_capacity;
+static int folder_sizes[FOLDERS_MAX];
+
+static int theme_folder(int item) {
+	return item_folder[item];
+}
+
+static void build_cells(void) {
+	int need = g_library.count + folders_count();
+	cell_count = 0;
+	if (need > cell_capacity) {
+		Cell *grown = realloc(cells, (size_t)need * sizeof(Cell));
+		if (!grown)
+			return;
+		cells = grown;
+		cell_capacity = need;
+	}
+	if (g_library.count > item_capacity) {
+		int *grown = realloc(item_folder, (size_t)g_library.count * sizeof(int));
+		if (!grown)
+			return;
+		item_folder = grown;
+		item_capacity = g_library.count;
+	}
+	memset(folder_sizes, 0, sizeof(folder_sizes));
+	for (int i = 0; i < g_library.count; i++) {
+		int f = folders_of(g_library.items[i].dir);
+		item_folder[i] = f < folders_count() ? f : -1;
+		if (item_folder[i] >= 0)
+			folder_sizes[item_folder[i]]++;
+	}
+	if (open_folder >= folders_count())
+		open_folder = -1; // deleted meanwhile
+	if (open_folder < 0)
+		for (int f = 0; f < folders_count(); f++)
+			cells[cell_count++] = (Cell){f, -1};
+	for (int i = 0; i < g_library.count; i++)
+		if (item_folder[i] == open_folder)
+			cells[cell_count++] = (Cell){-1, i};
+}
+
+static int folder_size(int folder) {
+	return folder >= 0 && folder < FOLDERS_MAX ? folder_sizes[folder] : 0;
+}
+
+static float grid_top(void) {
+	return HEADER_H + 56.0f + (g_db_writable ? 0.0f : 56.0f);
+}
+
+static float view_h(void) {
+	return GRID_BOTTOM - grid_top();
+}
+
+static void enter_folder(int folder) {
+	return_selected = selected;
+	open_folder = folder;
+	selected = 0;
+	scroll = scroll_target = 0.0f;
+}
+
+static void leave_folder(void) {
+	open_folder = -1;
+	selected = return_selected;
+	scroll = scroll_target = 0.0f;
+}
+
+static void activate(int cell) {
+	if (cell < 0 || cell >= cell_count)
+		return;
+	if (cells[cell].folder >= 0)
+		enter_folder(cells[cell].folder);
+	else
+		open_actions(&g_library.items[cells[cell].item]);
 }
 
 void library_screen_update(const Input *in) {
-	int count = g_library.count;
+	if (ime_active()) {
+		char text[FOLDER_NAME_MAX];
+		int r = ime_poll(text, sizeof(text));
+		if (r == 1)
+			finish_naming(text);
+		else if (r == -1)
+			naming = NAME_NONE;
+		return;
+	}
+	build_cells();
+	int count = cell_count;
 	if (selected >= count)
 		selected = count > 0 ? count - 1 : 0;
-	if ((in->repeat & SCE_CTRL_UP) && selected > 0)
+	if ((in->repeat & SCE_CTRL_LEFT) && selected % COLS > 0)
 		selected--;
-	if ((in->repeat & SCE_CTRL_DOWN) && selected < count - 1)
+	if ((in->repeat & SCE_CTRL_RIGHT) && selected % COLS < COLS - 1 && selected < count - 1)
 		selected++;
+	if ((in->repeat & SCE_CTRL_UP) && selected >= COLS)
+		selected -= COLS;
+	if ((in->repeat & SCE_CTRL_DOWN) && selected + COLS < count)
+		selected += COLS;
+	else if ((in->repeat & SCE_CTRL_DOWN) && selected / COLS < (count - 1) / COLS)
+		selected = count - 1; // onto a shorter last row
 	if (in->pressed & SCE_CTRL_TRIANGLE)
 		check_updates();
 	if ((in->pressed & SCE_CTRL_SQUARE) && unregistered_count() > 0) {
@@ -259,49 +457,102 @@ void library_screen_update(const Input *in) {
 		}
 	}
 	if ((in->pressed & BTN_OK) && count > 0)
-		open_actions(&g_library.items[selected]);
+		activate(selected);
+	else if ((in->pressed & SCE_CTRL_SELECT) && count > 0 && cells[selected].folder >= 0)
+		open_folder_menu(cells[selected].folder);
+	else if ((in->pressed & BTN_BACK) && open_folder >= 0)
+		leave_folder();
 
+	float top = grid_top();
 	if (in->dragging)
 		scroll = scroll_target = scroll_target - in->drag_dy;
-	if (in->tapped && in->tap_y >= LIST_TOP && in->tap_y <= LIST_BOTTOM) {
-		int i = (int)(((float)in->tap_y - LIST_TOP + scroll) / (ROW_H + ROW_GAP));
-		if (i >= 0 && i < count) {
+	if (in->tapped && in->tap_y < top && open_folder >= 0) {
+		leave_folder(); // the "Library ›" breadcrumb
+	} else if (in->tapped && in->tap_y >= top && in->tap_y <= GRID_BOTTOM) {
+		float cy = (float)in->tap_y - top + scroll;
+		int row = (int)(cy / PITCH), col = (int)(((float)in->tap_x - MARGIN) / (CARD_W + GAP));
+		int i = row * COLS + col;
+		if (col >= 0 && col < COLS && i < count && cy - (float)row * PITCH <= CARD_H) {
 			selected = i;
-			open_actions(&g_library.items[i]);
+			activate(i);
 		}
 	}
 	if (!in->dragging) {
-		float top = (float)selected * (ROW_H + ROW_GAP);
-		if (top < scroll_target)
-			scroll_target = top;
-		if (top + ROW_H + 12.0f > scroll_target + (LIST_BOTTOM - LIST_TOP))
-			scroll_target = top + ROW_H + 12.0f - (LIST_BOTTOM - LIST_TOP);
+		float y = (float)(selected / COLS) * PITCH;
+		if (y - 8.0f < scroll_target)
+			scroll_target = y - 8.0f;
+		if (y + CARD_H + 12.0f > scroll_target + view_h())
+			scroll_target = y + CARD_H + 12.0f - view_h();
 	}
-	if (scroll_target > max_scroll())
-		scroll_target = max_scroll();
+	int rows = (count + COLS - 1) / COLS;
+	float max = (float)rows * PITCH - view_h();
+	if (scroll_target > max)
+		scroll_target = max > 0 ? max : 0;
 	if (scroll_target < 0)
 		scroll_target = 0;
 	scroll = ui_approach(scroll, scroll_target, 16.0f);
 }
 
-static void draw_row(int index, float y) {
-	const LibraryItem *it = &g_library.items[index];
-	int focused = index == selected;
-	float x = MARGIN, w = SCREEN_W - 2 * MARGIN;
-	ui_rrect(x, y, w, ROW_H, 14.0f, focused ? C_SURFACE2 : C_SURFACE);
+// --- drawing ------------------------------------------------------------------------
 
-	float tx = x + 8.0f, ty = y + (ROW_H - THUMB_H) * 0.5f;
-	ui_rrect(tx, ty, THUMB_W, THUMB_H, 10.0f, C_SURFACE3);
-	if (it->thumb[0]) {
-		ImageRef img = images_file(it->thumb);
-		if (img.tex)
-			ui_image(img.tex, tx, ty, THUMB_W, THUMB_H, 10, 10, 10, 10, RGBA8(255, 255, 255, (int)(255 * img.alpha)));
-	}
+static void draw_thumb(const char *path, float x, float y, float w, float h, float r_top, float r_bottom) {
+	if (!path[0])
+		return;
+	ImageRef img = images_file(path);
+	if (img.tex)
+		ui_image(img.tex, x, y, w, h, r_top, r_top, r_bottom, r_bottom, RGBA8(255, 255, 255, (int)(255 * img.alpha)));
+}
 
-	float cx = tx + THUMB_W + 18.0f, cw = w - THUMB_W - 220.0f;
+static void card_frame(float x, float y, int focused) {
+	if (focused)
+		ui_shadow(x, y, CARD_W, CARD_H, 14.0f, 1.0f);
+	ui_rrect(x, y, CARD_W, CARD_H, 14.0f, focused ? C_SURFACE2 : C_SURFACE);
+	ui_rrect(x, y, CARD_W, IMAGE_H, 14.0f, C_SURFACE3);
+	ui_rect(x, y + IMAGE_H - 14.0f, CARD_W, 14.0f, C_SURFACE3);
+}
+
+static void card_text(float x, float y, const char *title, const char *meta) {
 	char text[192];
-	ui_text_fit(FONT_TITLE, it->title, (int)cw, text, sizeof(text));
-	ui_text(FONT_TITLE, cx, y + 34.0f, C_TEXT, text);
+	ui_text_fit(FONT_BOLD, title, (int)CARD_W - 24, text, sizeof(text));
+	ui_text(FONT_BOLD, x + 12.0f, y + IMAGE_H + 24.0f, C_TEXT, text);
+	ui_text_fit(FONT_SMALL, meta, (int)CARD_W - 24, text, sizeof(text));
+	ui_text(FONT_SMALL, x + 12.0f, y + IMAGE_H + 43.0f, C_TEXT3, text);
+}
+
+// A folder shows the first four of its themes as a 2x2 mosaic.
+static void draw_folder(int folder, float x, float y, int focused) {
+	card_frame(x, y, focused);
+	float w = (CARD_W - 3 * 4.0f) * 0.5f, h = (IMAGE_H - 3 * 4.0f) * 0.5f;
+	int shown = 0;
+	for (int i = 0; i < g_library.count && shown < 4; i++) {
+		if (theme_folder(i) != folder)
+			continue;
+		float tx = x + 4.0f + (float)(shown % 2) * (w + 4.0f), ty = y + 4.0f + (float)(shown / 2) * (h + 4.0f);
+		ui_rrect(tx, ty, w, h, 8.0f, C_SURFACE2);
+		draw_thumb(g_library.items[i].thumb, tx, ty, w, h, 8.0f, 8.0f);
+		shown++;
+	}
+	if (shown == 0)
+		ui_text_center(FONT_SMALL, x + CARD_W * 0.5f, y + IMAGE_H * 0.5f + 5.0f, C_TEXT3, "Empty");
+	// A folder tab on the label, so folders read differently from themes.
+	float fx = x + 12.0f, fy = y + IMAGE_H + 12.0f;
+	ui_rrect(fx, fy + 3.0f, 18.0f, 13.0f, 3.0f, C_ACCENT);
+	ui_rrect(fx, fy, 8.0f, 6.0f, 2.0f, C_ACCENT);
+	char text[192], meta[48];
+	int n = folder_size(folder);
+	snprintf(meta, sizeof(meta), "%d theme%s", n, n == 1 ? "" : "s");
+	ui_text_fit(FONT_BOLD, folders_name(folder), (int)CARD_W - 50, text, sizeof(text));
+	ui_text(FONT_BOLD, x + 38.0f, y + IMAGE_H + 24.0f, C_TEXT, text);
+	ui_text(FONT_SMALL, x + 12.0f, y + IMAGE_H + 43.0f, C_TEXT3, meta);
+	if (focused)
+		ui_rrect_outline(x - 4.0f, y - 4.0f, CARD_W + 8.0f, CARD_H + 8.0f, 18.0f, 2.5f,
+		                 ui_alpha(C_ACCENT, 0.75f + 0.25f * sinf(ui_time() * 4.0f)));
+}
+
+static void draw_theme(int index, float x, float y, int focused) {
+	const LibraryItem *it = &g_library.items[index];
+	card_frame(x, y, focused);
+	draw_thumb(it->thumb, x, y, CARD_W, IMAGE_H, 14.0f, 0.0f);
 
 	char size[24] = "", meta[192];
 	if (it->size > 0)
@@ -311,58 +562,64 @@ static void draw_row(int index, float y) {
 	if (slash && slash - it->dir < 6)
 		snprintf(device, sizeof(device), "%.*s", (int)(slash - it->dir + 1), it->dir);
 	snprintf(meta, sizeof(meta), "%s%s%s%s%s", it->provider[0] ? it->provider : "Unknown author",
-	         size[0] ? "  \xC2\xB7  " : "", size, device[0] ? "  \xC2\xB7  " : "", device);
-	ui_text_fit(FONT_BODY, meta, (int)cw, text, sizeof(text));
-	ui_text(FONT_BODY, cx, y + 59.0f, C_TEXT3, text);
+	         size[0] ? " \xC2\xB7 " : "", size, device[0] ? " \xC2\xB7 " : "", device);
+	card_text(x, y, it->title, meta);
 
-	// Status chips, right-aligned
-	float bx = x + w - 18.0f;
 	Task task;
 	int running = it->psvt_id && tasks_find(it->psvt_id, &task) && task.state <= TASK_FINISHING;
 	const char *badge = NULL;
 	uint32_t bg = 0, fg = 0;
 	if (running) {
-		badge = "UPDATING", bg = ui_alpha(C_ACCENT, 0.2f), fg = C_ACCENT;
+		badge = "UPDATING", bg = C_ACCENT, fg = C_ON_ACCENT;
 	} else if (!it->registered) {
-		badge = "NOT ADDED", bg = ui_alpha(C_WARNING, 0.18f), fg = C_WARNING;
+		badge = "NOT ADDED", bg = C_WARNING, fg = RGBA8(30, 24, 10, 255);
 	} else if (!it->has_files) {
-		badge = "MISSING FILES", bg = ui_alpha(C_DANGER, 0.18f), fg = C_DANGER;
+		badge = "MISSING FILES", bg = C_DANGER, fg = RGBA8(30, 10, 10, 255);
 	} else if (has_update(it)) {
-		badge = "UPDATE", bg = ui_alpha(C_WARNING, 0.18f), fg = C_WARNING;
+		badge = "UPDATE", bg = C_WARNING, fg = RGBA8(30, 24, 10, 255);
 	}
 	if (badge)
-		ui_badge(bx - (float)ui_badge_width(badge), y + (ROW_H - 20.0f) * 0.5f, badge, bg, fg);
+		ui_badge(x + CARD_W - 10.0f - (float)ui_badge_width(badge), y + IMAGE_H - 30.0f, badge, bg, fg);
 
 	if (focused)
-		ui_rrect_outline(x - 4.0f, y - 4.0f, w + 8.0f, ROW_H + 8.0f, 18.0f, 2.5f,
+		ui_rrect_outline(x - 4.0f, y - 4.0f, CARD_W + 8.0f, CARD_H + 8.0f, 18.0f, 2.5f,
 		                 ui_alpha(C_ACCENT, 0.75f + 0.25f * sinf(ui_time() * 4.0f)));
 }
 
 void library_screen_draw(void) {
-	char summary[128];
+	build_cells();
+	char summary[160];
 	int local = unregistered_count();
-	int installed = g_library.count - local;
-	snprintf(summary, sizeof(summary), "%d installed theme%s", installed, installed == 1 ? "" : "s");
-	ui_text(FONT_TITLE, MARGIN, HEADER_H + 30.0f, C_TEXT, summary);
-	float sx = MARGIN + (float)ui_text_width(FONT_TITLE, summary) + 14.0f;
-	if (local > 0) {
-		char label[48];
-		snprintf(label, sizeof(label), "%d NOT ADDED", local);
-		ui_badge(sx, HEADER_H + 14.0f, label, ui_alpha(C_WARNING, 0.18f), C_WARNING);
+	if (open_folder >= 0) {
+		ui_glyph(ui_back_glyph(), MARGIN + 10.0f, HEADER_H + 24.0f, 1.0f);
+		ui_text(FONT_TITLE, MARGIN + 28.0f, HEADER_H + 30.0f, C_TEXT3, "Library  \xE2\x80\xBA");
+		float tx = MARGIN + 28.0f + (float)ui_text_width(FONT_TITLE, "Library  \xE2\x80\xBA") + 8.0f;
+		int n = folder_size(open_folder);
+		snprintf(summary, sizeof(summary), "%s  \xC2\xB7  %d theme%s", folders_name(open_folder), n, n == 1 ? "" : "s");
+		ui_text(FONT_TITLE, tx, HEADER_H + 30.0f, C_TEXT, summary);
+	} else {
+		int installed = g_library.count - local;
+		snprintf(summary, sizeof(summary), "%d installed theme%s", installed, installed == 1 ? "" : "s");
+		ui_text(FONT_TITLE, MARGIN, HEADER_H + 30.0f, C_TEXT, summary);
+		float sx = MARGIN + (float)ui_text_width(FONT_TITLE, summary) + 14.0f;
+		if (local > 0) {
+			char label[48];
+			snprintf(label, sizeof(label), "%d NOT ADDED", local);
+			ui_badge(sx, HEADER_H + 14.0f, label, ui_alpha(C_WARNING, 0.18f), C_WARNING);
+		}
 	}
 	if (checking) {
 		ui_spinner(SCREEN_W - MARGIN - 8.0f, HEADER_H + 24.0f, 8.0f, C_ACCENT);
 		ui_text_right(FONT_SMALL, SCREEN_W - MARGIN - 24.0f, HEADER_H + 29.0f, C_TEXT3, "Checking for updates");
 	}
 
-	float top = LIST_TOP;
+	float top = grid_top();
 	if (!g_db_writable) {
-		float h = 52.0f;
-		ui_rrect(MARGIN, top - 8.0f, SCREEN_W - 2 * MARGIN, h, 12.0f, ui_alpha(C_WARNING, 0.14f));
-		ui_text(FONT_BOLD, MARGIN + 16.0f, top + 13.0f, C_WARNING, "Unsafe homebrew is disabled");
-		ui_text(FONT_SMALL, MARGIN + 16.0f, top + 33.0f, C_TEXT2,
+		float h = 52.0f, by = HEADER_H + 48.0f;
+		ui_rrect(MARGIN, by, SCREEN_W - 2 * MARGIN, h, 12.0f, ui_alpha(C_WARNING, 0.14f));
+		ui_text(FONT_BOLD, MARGIN + 16.0f, by + 21.0f, C_WARNING, "Unsafe homebrew is disabled");
+		ui_text(FONT_SMALL, MARGIN + 16.0f, by + 41.0f, C_TEXT2,
 		        "Enable it in HENkaku Settings and restart Imago to install or remove themes.");
-		top += h + 4.0f;
 	}
 
 	if (g_library_loading && g_library.count == 0) {
@@ -371,24 +628,39 @@ void library_screen_draw(void) {
 		ui_text_center(FONT_TITLE, SCREEN_W * 0.5f, top + 110.0f, C_TEXT, "No custom themes yet");
 		ui_text_center(FONT_BODY, SCREEN_W * 0.5f, top + 140.0f, C_TEXT2,
 		               "Themes you install from Discover will show up here.");
+	} else if (cell_count == 0) {
+		ui_text_center(FONT_TITLE, SCREEN_W * 0.5f, top + 110.0f, C_TEXT, "This folder is empty");
+		ui_text_center(FONT_BODY, SCREEN_W * 0.5f, top + 140.0f, C_TEXT2,
+		               "Move themes here with \xE2\x9C\x95 \xE2\x80\xBA Move to folder.");
 	} else {
 		vita2d_enable_clipping();
-		vita2d_set_clip_rectangle(0, (int)top - 8, SCREEN_W, (int)LIST_BOTTOM + 6);
-		for (int i = 0; i < g_library.count; i++) {
-			float y = top + (float)i * (ROW_H + ROW_GAP) - scroll;
-			if (y + ROW_H < top - 10.0f || y > LIST_BOTTOM)
-				continue;
-			draw_row(i, y);
-		}
+		vita2d_set_clip_rectangle(0, (int)top - 10, SCREEN_W, (int)GRID_BOTTOM + 4);
+		int first = (int)floorf((scroll - 20.0f) / PITCH), last = (int)ceilf((scroll + view_h()) / PITCH);
+		for (int row = first < 0 ? 0 : first; row <= last; row++)
+			for (int col = 0; col < COLS; col++) {
+				int i = row * COLS + col;
+				if (i >= cell_count)
+					continue;
+				float x = MARGIN + (float)col * (CARD_W + GAP), y = top + (float)row * PITCH - scroll;
+				if (cells[i].folder >= 0)
+					draw_folder(cells[i].folder, x, y, i == selected);
+				else
+					draw_theme(cells[i].item, x, y, i == selected);
+			}
 		vita2d_disable_clipping();
 	}
 
-	Hint hints[3];
+	Hint hints[5];
 	int n = 0;
+	int on_folder = cell_count > 0 && selected < cell_count && cells[selected].folder >= 0;
+	if (open_folder >= 0)
+		hints[n++] = (Hint){ui_back_glyph(), "Back"};
 	if (local > 0)
 		hints[n++] = (Hint){GLYPH_SQUARE, "Add local themes"};
 	hints[n++] = (Hint){GLYPH_TRIANGLE, "Check for updates"};
-	if (g_library.count > 0)
-		hints[n++] = (Hint){ui_ok_glyph(), "Options"};
+	if (on_folder)
+		hints[n++] = (Hint){GLYPH_SELECT, "Folder options"};
+	if (cell_count > 0)
+		hints[n++] = (Hint){ui_ok_glyph(), on_folder ? "Open" : "Options"};
 	app_footer(hints, n, NULL);
 }

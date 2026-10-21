@@ -1,6 +1,7 @@
 #include "assets.h"
 
 #include "fs.h"
+#include "pictures.h"
 #include "themedoc.h"
 
 #include <stdio.h>
@@ -98,6 +99,20 @@ void assets_scan(const LibraryItem *themes, int count, AssetIndex *idx) {
 		}
 		themedoc_free(&doc);
 	}
+
+	PictureList pictures;
+	pictures_scan(&pictures);
+	for (int i = 0; i < pictures.count; i++) {
+		Asset *a = add(idx, &capacity, ASSET_PICTURES, -1);
+		if (!a)
+			break;
+		a->page = i;
+		snprintf(a->file, sizeof(a->file), "%s", pictures.items[i].path);
+		snprintf(a->image, sizeof(a->image), "%s", pictures.items[i].path);
+		snprintf(a->folder, sizeof(a->folder), "%s", pictures.items[i].folder);
+	}
+	pictures_free(&pictures);
+
 	if (idx->count > 1)
 		qsort(idx->items, (size_t)idx->count, sizeof(Asset), by_kind);
 }

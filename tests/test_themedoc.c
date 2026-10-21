@@ -50,6 +50,16 @@ static void check_png(const char *path, int w, int h) {
 	free(px);
 }
 
+// An 8-bit palette PNG (IHDR colour type 3) of the given size.
+static void check_palette_png(const char *path, int w, int h) {
+	check_png(path, w, h);
+	char *data;
+	size_t size;
+	CHECK(fs_read_file(path, &data, &size) == 0);
+	CHECK(size > 26 && (uint8_t)data[24] == 8 && (uint8_t)data[25] == 3);
+	free(data);
+}
+
 int main(int argc, char **argv) {
 	if (argc < 4) {
 		printf("usage: test_themedoc <scratch> <a.zip> <b.zip> [...]\n");
@@ -212,6 +222,123 @@ int main(int argc, char **argv) {
 		themedoc_free(&made);
 		for (int k = 0; k < 3; k++)
 			themedoc_free(&t[k]);
+	}
+
+	// Pictures from the memory card: a theme made only of pictures, and
+	// pictures mixed into a downloaded theme.
+	{
+		char pics[3][300], out[300], err[200] = "", folder[300];
+		static const int sizes[3][2] = {{1280, 720}, {640, 480}, {960, 544}};
+		snprintf(folder, sizeof(folder), "%s/picture/SCREENSHOT", scratch);
+		fs_mkdir_p(folder);
+		snprintf(pics[0], sizeof(pics[0]), "%s/picture/sunset photo.png", scratch);
+		snprintf(pics[1], sizeof(pics[1]), "%s/picture/SCREENSHOT/shot&1.png", scratch);
+		snprintf(pics[2], sizeof(pics[2]), "%s/picture/SCREENSHOT/sunset photo.png", scratch); // same name
+		for (int k = 0; k < 3; k++) {
+			int w = sizes[k][0], h = sizes[k][1];
+			uint8_t *px = malloc((size_t)w * h * 4);
+			for (int y = 0; y < h; y++)
+				for (int x = 0; x < w; x++) {
+					uint8_t *p = px + ((size_t)y * w + x) * 4;
+					p[0] = (uint8_t)(x * 255 / w), p[1] = (uint8_t)(y * 255 / h), p[2] = (uint8_t)(k * 100), p[3] = 255;
+				}
+			CHECK(image_save_png(pics[k], px, w, h) == 0);
+			free(px);
+		}
+		const char *list[3] = {pics[0], pics[1], pics[2]};
+		ThemeDoc pic;
+		CHECK(themedoc_from_pictures(&pic, list, 3, pics[1]) == 0);
+		CHECK(themedoc_page_count(&pic) == 3 && themedoc_has_part(&pic, PART_LOCKSCREEN));
+		CHECK(themedoc_has_part(&pic, PART_STATUSBAR));
+		CHECK(pic.origin_count == 2 && pic.origin_pictures[0] && pic.origin_pictures[1]);
+		char page[512];
+		themedoc_page_file(&pic, 1, 0, page, sizeof(page));
+		CHECK(strcmp(page, pics[1]) == 0);
+		char credit[128];
+		themedoc_credit(&pic, credit, sizeof(credit));
+		CHECK(credit[0] == '\0'); // your own pictures aren't credited to anyone
+		CHECK(themedoc_from_pictures(&(ThemeDoc){0}, list, 0, NULL) != 0);
+
+		snprintf(out, sizeof(out), "%s/pictures_out", scratch);
+		CHECK(themedoc_write(&pic, out, 1, NULL, NULL, err, sizeof(err)) == 0);
+		ThemeDoc back;
+		CHECK(themedoc_load(&back, out) == 0);
+		CHECK(back.root && themedoc_page_count(&back) == 3 && missing_files(out, back.root->child) == 0);
+		for (int k = 0; back.root && k < 3; k++) {
+			char wall[512], thumb[512];
+			themedoc_page_file(&back, k, 0, wall, sizeof(wall));
+			themedoc_page_file(&back, k, 1, thumb, sizeof(thumb));
+			check_palette_png(wall, THEME_WALLPAPER_W, THEME_WALLPAPER_H);
+			check_palette_png(thumb, THEME_PAGE_THUMB_W, THEME_PAGE_THUMB_H);
+			CHECK(strstr(wall, ".png") && !strchr(strrchr(wall, '/') + 1, ' ') && !strchr(wall, '&'));
+		}
+		char lock[512];
+		themedoc_lockscreen_file(&back, lock, sizeof(lock));
+		check_palette_png(lock, THEME_WALLPAPER_W, THEME_WALLPAPER_H);
+		char p[400];
+		snprintf(p, sizeof(p), "%s/preview_thumbnail.png", out);
+		check_png(p, 226, 128);
+		themedoc_free(&back);
+
+		// Mixed: the first sample theme keeps its first page, gains two
+		// pictures, and takes a picture as its lock screen (keeping its colours).
+		ThemeDoc base, mixed;
+		CHECK(themedoc_load(&base, dirs[0]) == 0);
+		CHECK(themedoc_copy(&mixed, &base) == 0);
+		const ThemeDoc *froms[3] = {&base, &pic, &pic};
+		int pages[3] = {0, 0, 2};
+		CHECK(themedoc_set_pages(&mixed, froms, pages, 3) == 0);
+		ThemeDoc lockpic;
+		const char *one[1] = {pics[1]};
+		CHECK(themedoc_from_pictures(&lockpic, one, 0, one[0]) == 0);
+		char color_before[32], color_after[32];
+		xml_get_text(xml_find(mixed.root, "StartScreenProperty/m_dateColor"), color_before, sizeof(color_before));
+		CHECK(themedoc_take_lockscreen_image(&mixed, &lockpic) == 0);
+		xml_get_text(xml_find(mixed.root, "StartScreenProperty/m_dateColor"), color_after, sizeof(color_after));
+		CHECK(strcmp(color_before, color_after) == 0);
+		themedoc_lockscreen_file(&mixed, lock, sizeof(lock));
+		CHECK(strcmp(lock, pics[1]) == 0);
+		snprintf(out, sizeof(out), "%s/pictures_mixed", scratch);
+		CHECK(themedoc_write(&mixed, out, 1, NULL, NULL, err, sizeof(err)) == 0);
+		CHECK(themedoc_load(&back, out) == 0);
+		CHECK(back.root && themedoc_page_count(&back) == 3 && missing_files(out, back.root->child) == 0);
+		if (back.root) {
+			char want[512], got[512];
+			themedoc_page_file(&base, 0, 0, want, sizeof(want));
+			themedoc_page_file(&back, 0, 0, got, sizeof(got));
+			CHECK(fs_tree_size(want) == fs_tree_size(got)); // the theme's own page is copied as-is
+			themedoc_page_file(&back, 2, 0, got, sizeof(got));
+			check_palette_png(got, THEME_WALLPAPER_W, THEME_WALLPAPER_H);
+			themedoc_lockscreen_file(&back, got, sizeof(got));
+			check_palette_png(got, THEME_WALLPAPER_W, THEME_WALLPAPER_H);
+		}
+		themedoc_free(&back);
+
+		// A picture with very few colours still comes out as an 8-bit PNG.
+		{
+			uint8_t *solid = malloc(64 * 32 * 4);
+			for (int k = 0; k < 64 * 32; k++)
+				solid[k * 4] = 200, solid[k * 4 + 1] = 30, solid[k * 4 + 2] = 40, solid[k * 4 + 3] = 255;
+			snprintf(p, sizeof(p), "%s/solid.png", scratch);
+			CHECK(image_save_png_indexed(p, solid, 64, 32) == 0);
+			check_palette_png(p, 64, 32);
+			free(solid);
+		}
+
+		// A file that isn't a picture fails the write cleanly.
+		snprintf(p, sizeof(p), "%s/picture/notes.png", scratch);
+		fs_write_file(p, "not a picture", 13);
+		const char *bad[1] = {p};
+		ThemeDoc broken;
+		CHECK(themedoc_from_pictures(&broken, bad, 1, NULL) == 0);
+		snprintf(out, sizeof(out), "%s/pictures_broken", scratch);
+		CHECK(themedoc_write(&broken, out, 1, NULL, NULL, err, sizeof(err)) != 0);
+		CHECK(strstr(err, "notes.png") != NULL && !fs_exists(out));
+		themedoc_free(&broken);
+		themedoc_free(&lockpic);
+		themedoc_free(&mixed);
+		themedoc_free(&base);
+		themedoc_free(&pic);
 	}
 
 	// Every sample theme's music parses as ATRAC9.

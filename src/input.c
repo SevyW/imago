@@ -20,6 +20,7 @@ uint32_t BTN_BACK = SCE_CTRL_CIRCLE;
 #ifdef IMAGO_AUTOPILOT
 // Test builds only: replays "<frame> <BUTTON>" lines from autopilot.txt so
 // screens can be exercised in an emulator without a focused window.
+// "<frame> SHOT" saves that frame to ux0:data/Imago/shots/<frame>.png.
 #include <stdio.h>
 
 #define AUTOPILOT_PATH "ux0:data/Imago/autopilot.txt"
@@ -31,6 +32,8 @@ static struct {
 } steps[MAX_STEPS];
 static int step_count, step_next;
 static unsigned frame_no;
+static unsigned shots[MAX_STEPS];
+static int shot_count;
 
 static uint32_t button_named(const char *name) {
 	static const struct {
@@ -55,6 +58,11 @@ static void autopilot_load(void) {
 	char name[32];
 	unsigned frame;
 	while (step_count < MAX_STEPS && fscanf(f, "%u %31s", &frame, name) == 2) {
+		if (strcmp(name, "SHOT") == 0) {
+			if (shot_count < MAX_STEPS)
+				shots[shot_count++] = frame;
+			continue;
+		}
 		steps[step_count].frame = frame;
 		steps[step_count].buttons = button_named(name);
 		step_count++;
@@ -74,6 +82,13 @@ static uint32_t autopilot_buttons(void) {
 			step_next++;
 	}
 	return held;
+}
+
+unsigned input_autopilot_shot(void) {
+	for (int i = 0; i < shot_count; i++)
+		if (shots[i] == frame_no)
+			return frame_no;
+	return 0;
 }
 #endif
 
