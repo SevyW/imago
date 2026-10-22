@@ -17,7 +17,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 IMAGES = ROOT / "docs" / "images"
 PHOTO = ROOT / "tools" / "assets" / "ps-vita-evan-amos.webp"
-SLIDES = ["discover.png", "installing.png", "installed.png", "filter.png", "library.png"]
+SLIDES = ["discover.png", "installing.png", "library.png", "apps.png", "app_detail.png", "online_icons.png"]
 HOLD = 3.2  # seconds each slide stays on screen
 FADE = 0.5
 RES = 1.6  # raster density relative to the SVG's coordinate space (sharp on hi-DPI)

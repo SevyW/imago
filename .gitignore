@@ -8,3 +8,4 @@ param.sfo
 .vscode/
 build-test/
 dist/
+__pycache__/

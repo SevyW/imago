@@ -522,6 +522,33 @@ static void save_autopilot_shot(void) {
 	image_save_png(path, (const uint8_t *)copy, SCREEN_W, SCREEN_H);
 	free(copy);
 }
+
+// Test builds: while ux0:data/Imago/record exists, saves about 10 frames a
+// second (checked every half second) as raw framebuffers named by milliseconds (for the README's clips).
+static void record_frame(void) {
+	static int recording;
+	static unsigned long long start;
+	static unsigned count;
+	if (count++ % 30 == 0) { // the flag is checked twice a second, so recording can start and stop
+		int was = recording;
+		recording = fs_exists(DATA_DIR "/record");
+		if (recording && !was) {
+			fs_mkdir_p(DATA_DIR "/rec");
+			start = sceKernelGetProcessTimeWide();
+		}
+	}
+	if (!recording || count % 6)
+		return;
+	vita2d_wait_rendering_done();
+	const uint32_t *fb = vita2d_get_current_fb();
+	char path[96];
+	snprintf(path, sizeof(path), DATA_DIR "/rec/%06u.raw", (unsigned)((sceKernelGetProcessTimeWide() - start) / 1000));
+	FILE *f = fopen(path, "wb");
+	if (f) {
+		fwrite(fb, 4, 1024 * SCREEN_H, f); // rows are 1024 pixels apart; cropped on the PC
+		fclose(f);
+	}
+}
 #endif
 
 // The first lines of every session: enough to know what someone was running.
@@ -696,6 +723,7 @@ int main(void) {
 		vita2d_end_drawing();
 #ifdef IMAGO_AUTOPILOT
 		save_autopilot_shot();
+		record_frame();
 #endif
 		vita2d_common_dialog_update();
 		vita2d_swap_buffers();

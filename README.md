@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/hero.svg" width="900" alt="A PS Vita running Imago: the theme grid, a theme being installed, a filter by author and the library">
+<img src="docs/images/hero.svg" width="900" alt="A PS Vita running Imago: the theme grid, a theme being installed, the library, the Apps tab, an app's page and artwork found online">
 
 **Created by [Sevy](https://github.com/SevyW)**
 
@@ -54,9 +54,9 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
 ## 🎬 See it work
 
 <p align="center">
-  <img src="docs/images/tour.gif" width="720" alt="Imago's opening splash, then the theme grid loading, scrolling, opening Studio Ghibli, installing it, then showing it in the Library">
+  <img src="docs/images/tour.gif" width="720" alt="Imago's theme grid scrolling, a search for Silver Surfer, installing it, the Library and Assets, then the Apps tab: Adrenaline's artwork found on VitaDB and framed in the editor">
   <br>
-  <sub>Real footage from the Vita3K emulator, at real speed (long pauses trimmed): the opening splash fades into the grid, a theme is opened and installed, its card gets an <b>INSTALLED</b> badge, and it shows up in the <b>Library</b>.</sub>
+  <sub>Real footage from the Vita3K emulator, at real speed (long pauses trimmed): the grid scrolls, a search finds <b>Silver Surfer</b>, it's installed and shows up in the <b>Library</b> and <b>Assets</b>. Then the <b>Apps</b> tab: Adrenaline's page, its artwork found on <b>VitaDB</b>, and the editor. (The emulator has no apps of its own, so a dozen homebrew apps were set up in it with their VitaDB artwork.)</sub>
 </p>
 
 ---
@@ -83,9 +83,9 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
 | 🎮 **Feels native** | D-pad, analog stick and touch (tap and drag). ○/✕ follow your console's confirm-button setting, and the PS button is locked only while the database is being written. |
 
 <p align="center">
-  <img src="docs/images/install.gif" width="640" alt="The Install button turning into a progress bar: Downloading, Installing, Finishing, then Reinstall and a confirmation">
+  <img src="docs/images/install.gif" width="640" alt="The Install button turning into a progress bar, then Reinstall and a confirmation">
   <br>
-  <sub>One press: <b>Downloading → Installing → Finishing</b>, then a reminder of where to apply it.</sub>
+  <sub>One press: the button shows the progress, then a reminder of where to apply the theme.</sub>
 </p>
 
 ## 🖼️ A look at it
@@ -104,7 +104,7 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
     <td><img src="docs/images/installed.png" alt="A theme installed"><br><sub><b>Installed</b>: ready in Settings › Theme &amp; Background</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/library.png" alt="The library as a grid with folders"><br><sub><b>Library</b>: your own folders, an <b>UPDATE</b> and a theme <b>NOT ADDED</b> yet</sub></td>
+    <td><img src="docs/images/library.png" alt="The library as a grid with folders"><br><sub><b>Library</b>: your own folders, and an <b>UPDATE</b> waiting</sub></td>
     <td><img src="docs/images/options.png" alt="Theme options"><br><sub><b>Options</b>: update, uninstall, or remove from the system only</sub></td>
   </tr>
   <tr>
@@ -113,7 +113,7 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
   </tr>
   <tr>
     <td><img src="docs/images/pictures.png" alt="The Pictures shelf in Assets, with a picture picked as a wallpaper and one as the lock screen"><br><sub><b>Your pictures</b>: screenshots and photos as wallpapers or the lock screen</sub></td>
-    <td><img src="docs/images/picture_picker.png" alt="Choosing pictures in Theme Studio, one folder at a time"><br><sub><b>Picture browser</b>: add pictures to any theme in Theme Studio</sub></td>
+    <td><img src="docs/images/picture_picker.png" alt="Choosing a lock screen picture in Theme Studio, one folder at a time"><br><sub><b>Picture browser</b>: your pictures as a theme's wallpapers or lock screen</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/apps.png" alt="The Apps tab: every installed app as a bubble, one marked Custom"><br><sub><b>Apps</b>: every app, with the ones you restyled marked <b>CUSTOM</b></sub></td>
@@ -129,7 +129,7 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
   </tr>
 </table>
 
-<sub>The theme screenshots are from the Vita3K emulator; the <b>UPDATE</b> and <b>NOT ADDED</b> states were set up by hand for the pictures. The Apps screenshots are from a real PS Vita. Everything else is the app as it runs.</sub>
+<sub>The theme screenshots are from the Vita3K emulator; the <b>UPDATE</b> state was set up by hand for the pictures. The Apps screenshots are from a real PS Vita. Everything else is the app as it runs.</sub>
 
 ## ⚡ Why it's fast
 

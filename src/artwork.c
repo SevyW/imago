@@ -209,6 +209,9 @@ static void vdb_add(const VdbEntry *e, ArtPart part, ArtResults *out) {
 	char shots[sizeof(e->shots)], *rest;
 	snprintf(shots, sizeof(shots), "%s", e->shots);
 	for (char *s = strtok_r(shots, ";", &rest); s; s = strtok_r(NULL, ";", &rest)) {
+		const char *ext = strrchr(s, '.');
+		if (!ext || (strcasecmp(ext, ".png") != 0 && strcasecmp(ext, ".jpg") != 0 && strcasecmp(ext, ".jpeg") != 0))
+			continue; // some entries name a file the server doesn't have
 		snprintf(url, sizeof(url), VITADB "%s", s);
 		snprintf(label, sizeof(label), "%s \xC2\xB7 screenshot", e->name);
 		add(out, NULL, url, label, 960, 544);

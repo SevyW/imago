@@ -20,7 +20,8 @@ uint32_t BTN_BACK = SCE_CTRL_CIRCLE;
 #ifdef IMAGO_AUTOPILOT
 // Test builds only: replays "<frame> <BUTTON>" lines from autopilot.txt so
 // screens can be exercised in an emulator without a focused window.
-// "<frame> SHOT" saves that frame to ux0:data/Imago/shots/<frame>.png.
+// "<frame> SHOT" saves that frame to ux0:data/Imago/shots/<frame>.png, and
+// "<frame> TYPE Some_text" answers the keyboard (underscores become spaces).
 #include <stdio.h>
 
 #define AUTOPILOT_PATH "ux0:data/Imago/autopilot.txt"
@@ -34,6 +35,11 @@ static int step_count, step_next;
 static unsigned frame_no;
 static unsigned shots[MAX_STEPS];
 static int shot_count;
+static struct {
+	unsigned frame;
+	char text[64];
+} typed[16];
+static int typed_count, typed_next;
 
 static uint32_t button_named(const char *name) {
 	static const struct {
@@ -63,6 +69,18 @@ static void autopilot_load(void) {
 				shots[shot_count++] = frame;
 			continue;
 		}
+		if (strcmp(name, "TYPE") == 0) {
+			char text[64];
+			if (fscanf(f, " %63s", text) == 1 && typed_count < 16) {
+				for (char *c = text; *c; c++)
+					if (*c == '_')
+						*c = ' ';
+				typed[typed_count].frame = frame;
+				snprintf(typed[typed_count].text, sizeof(typed[0].text), "%s", text);
+				typed_count++;
+			}
+			continue;
+		}
 		steps[step_count].frame = frame;
 		steps[step_count].buttons = button_named(name);
 		step_count++;
@@ -82,6 +100,16 @@ static uint32_t autopilot_buttons(void) {
 			step_next++;
 	}
 	return held;
+}
+
+int input_autopilot_will_type(void) {
+	return typed_next < typed_count;
+}
+
+const char *input_autopilot_text(void) {
+	if (typed_next < typed_count && frame_no >= typed[typed_next].frame)
+		return typed[typed_next++].text;
+	return NULL;
 }
 
 unsigned input_autopilot_shot(void) {

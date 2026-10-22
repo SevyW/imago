@@ -28,4 +28,8 @@ void input_update(Input *in);
 #ifdef IMAGO_AUTOPILOT
 // The current frame number if autopilot.txt asks for a screenshot of it.
 unsigned input_autopilot_shot(void);
+// Text a "<frame> TYPE <text>" step answers the open keyboard with (once), or NULL.
+const char *input_autopilot_text(void);
+// Whether a TYPE step is still to come.
+int input_autopilot_will_type(void);
 #endif

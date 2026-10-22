@@ -1,5 +1,10 @@
 #include "ime.h"
 
+#ifdef IMAGO_AUTOPILOT
+#include "input.h"
+#include <stdio.h>
+#endif
+
 #include <psp2/common_dialog.h>
 #include <psp2/ime_dialog.h>
 #include <stdint.h>
@@ -11,6 +16,9 @@ static uint16_t title_utf16[64];
 static uint16_t initial_utf16[MAX_CHARS + 1];
 static uint16_t input_utf16[MAX_CHARS + 1];
 static int active;
+#ifdef IMAGO_AUTOPILOT
+static int scripted; // a TYPE step answers instead of the system keyboard
+#endif
 
 static void utf8_to_utf16(const char *src, uint16_t *dst, size_t max) {
 	size_t n = 0;
@@ -55,6 +63,12 @@ static int open_dialog(const char *title, const char *initial, int max_length, i
 	utf8_to_utf16(title, title_utf16, 64);
 	utf8_to_utf16(initial, initial_utf16, MAX_CHARS + 1);
 	memset(input_utf16, 0, sizeof(input_utf16));
+#ifdef IMAGO_AUTOPILOT
+	if (input_autopilot_will_type()) {
+		scripted = active = 1;
+		return 0;
+	}
+#endif
 
 	SceImeDialogParam param;
 	sceImeDialogParamInit(&param);
@@ -88,6 +102,16 @@ int ime_active(void) {
 int ime_poll(char *out, size_t size) {
 	if (!active)
 		return -1;
+#ifdef IMAGO_AUTOPILOT
+	if (scripted) { // a scripted answer, for recordings
+		const char *typed = input_autopilot_text();
+		if (!typed)
+			return 0;
+		scripted = active = 0;
+		snprintf(out, size, "%s", typed);
+		return 1;
+	}
+#endif
 	if (sceImeDialogGetStatus() != SCE_COMMON_DIALOG_STATUS_FINISHED)
 		return 0;
 	SceImeDialogResult result;
