@@ -23,8 +23,11 @@
 #define STALE_FRAMES 30     // queued requests not drawn for this long are dropped
 #define RETRY_US 8000000ULL // failed downloads are retried after 8 s
 #define FADE_US 220000.0f
+#define UPLOAD_PIXELS_PER_FRAME (1200 * 1024) // texture uploads per frame, so a burst never stalls one
 
-typedef enum { SLOT_FREE, SLOT_QUEUED, SLOT_LOADING, SLOT_READY, SLOT_FAILED } SlotState;
+// QUEUED -> LOADING (a worker decodes) -> DECODED (pixels waiting for the main
+// thread) -> READY (a texture), or FAILED.
+typedef enum { SLOT_FREE, SLOT_QUEUED, SLOT_LOADING, SLOT_DECODED, SLOT_READY, SLOT_FAILED } SlotState;
 
 typedef struct {
 	char key[80];
@@ -32,6 +35,8 @@ typedef struct {
 	char path[384]; // cache file, or the local source file
 	int max_width;  // local files: decode at most about this wide (0 = full size)
 	SlotState state;
+	uint8_t *pixels; // DECODED: RGBA waiting to become a texture
+	int pixels_w, pixels_h;
 	vita2d_texture *tex;
 	unsigned last_used;
 	unsigned long long ready_at;
@@ -52,6 +57,16 @@ static unsigned long long now_us(void) {
 	return sceKernelGetProcessTimeWide();
 }
 
+// Workers only decode into plain memory; textures are created on the main
+// thread (images_frame), between frames. libgxm isn't safe to call from other
+// threads while the main thread is drawing: creating textures in the workers
+// occasionally crashed the GPU, most often right after launch when many
+// cached thumbnails decode at once.
+typedef struct {
+	uint8_t *data; // tightly packed RGBA
+	int w, h;
+} Pixels;
+
 // vita2d's own JPEG loader rejects files that don't start with an APP0/APP1
 // segment (wsrv.nl's optimised JPEGs start with DQT) and its error handler
 // exits the process on corrupt data, so decode with libjpeg directly.
@@ -66,23 +81,22 @@ static void jpeg_fail(j_common_ptr info) {
 
 // max_width 0 keeps photos at least screen-sized; otherwise they're decoded
 // as small as possible while staying at least max_width wide.
-static vita2d_texture *decode_jpeg(const unsigned char *data, size_t size, int max_width) {
+static int decode_jpeg(const unsigned char *data, size_t size, int max_width, Pixels *out) {
 	struct jpeg_decompress_struct info;
 	JpegError err;
-	vita2d_texture *volatile tex = NULL;
+	uint8_t *volatile buffer = NULL;
 	info.err = jpeg_std_error(&err.base);
 	err.base.error_exit = jpeg_fail;
 	if (setjmp(err.jump)) {
 		jpeg_destroy_decompress(&info);
-		if (tex)
-			vita2d_free_texture(tex); // never drawn, so safe to free here
-		return NULL;
+		free(buffer);
+		return -1;
 	}
 	jpeg_create_decompress(&info);
 	jpeg_mem_src(&info, data, (unsigned long)size);
 	jpeg_read_header(&info, TRUE);
 	// Photos from the memory card can be huge: decode them at 1/2, 1/4 or 1/8
-	// scale, as long as the result still covers the screen.
+	// scale, as long as the result still covers what's needed.
 	unsigned min_w = max_width > 0 ? (unsigned)max_width : SCREEN_W, min_h = max_width > 0 ? 1 : SCREEN_H;
 	unsigned denom = 1;
 	while (denom < 8 && info.image_width / (denom * 2) >= min_w && info.image_height / (denom * 2) >= min_h)
@@ -92,123 +106,108 @@ static vita2d_texture *decode_jpeg(const unsigned char *data, size_t size, int m
 	info.out_color_space = JCS_EXT_RGBA; // matches vita2d's default ABGR texture layout
 	info.dct_method = JDCT_IFAST;
 	jpeg_start_decompress(&info);
-	if (info.output_width > 4096 || info.output_height > 4096)
+	if (info.output_width == 0 || info.output_height == 0 || info.output_width > 4096 || info.output_height > 4096)
 		longjmp(err.jump, 1);
-	tex = vita2d_create_empty_texture(info.output_width, info.output_height);
-	if (!tex)
+	size_t stride = (size_t)info.output_width * 4;
+	buffer = malloc(stride * info.output_height);
+	if (!buffer)
 		longjmp(err.jump, 1);
-	unsigned char *row = vita2d_texture_get_datap(tex);
-	unsigned stride = vita2d_texture_get_stride(tex);
 	while (info.output_scanline < info.output_height) {
-		JSAMPROW rows[1] = {row};
+		JSAMPROW rows[1] = {buffer + stride * info.output_scanline};
 		jpeg_read_scanlines(&info, rows, 1);
-		row += stride;
 	}
+	out->data = buffer;
+	out->w = (int)info.output_width;
+	out->h = (int)info.output_height;
 	jpeg_finish_decompress(&info);
 	jpeg_destroy_decompress(&info);
-	return tex;
+	return 0;
+}
+
+// Averages factor x factor blocks of an RGBA image, in place.
+static void shrink(Pixels *px, int factor) {
+	int dw = px->w / factor, dh = px->h / factor;
+	unsigned n = (unsigned)(factor * factor);
+	for (int y = 0; y < dh; y++)
+		for (int x = 0; x < dw; x++) {
+			unsigned sum[4] = {0, 0, 0, 0};
+			for (int yy = 0; yy < factor; yy++) {
+				const uint8_t *row = px->data + ((size_t)(y * factor + yy) * px->w + (size_t)x * factor) * 4;
+				for (int xx = 0; xx < factor * 4; xx++)
+					sum[xx & 3] += row[xx];
+			}
+			uint8_t *o = px->data + ((size_t)y * dw + x) * 4; // never ahead of what's still to be read
+			for (int c = 0; c < 4; c++)
+				o[c] = (uint8_t)(sum[c] / n);
+		}
+	px->w = dw;
+	px->h = dh;
 }
 
 // vita2d_load_PNG_buffer() takes no length and reads past the end of a
 // truncated file (theme thumbnails come from untrusted zips). libpng's
 // simplified API is bounded and keeps its error handling (setjmp) inside
 // libpng, so no jmp_buf ever crosses the library boundary.
-// Averages factor x factor blocks of an RGBA image into a texture.
-static vita2d_texture *shrink_into_texture(const uint8_t *src, int w, int h, int factor) {
-	int dw = w / factor, dh = h / factor;
-	vita2d_texture *tex = vita2d_create_empty_texture((unsigned)dw, (unsigned)dh);
-	if (!tex)
-		return NULL;
-	uint8_t *dst = vita2d_texture_get_datap(tex);
-	unsigned stride = vita2d_texture_get_stride(tex);
-	unsigned n = (unsigned)(factor * factor);
-	for (int y = 0; y < dh; y++) {
-		uint8_t *out = dst + (size_t)y * stride;
-		for (int x = 0; x < dw; x++) {
-			unsigned sum[4] = {0, 0, 0, 0};
-			for (int yy = 0; yy < factor; yy++) {
-				const uint8_t *row = src + ((size_t)(y * factor + yy) * w + (size_t)x * factor) * 4;
-				for (int xx = 0; xx < factor * 4; xx++)
-					sum[xx & 3] += row[xx];
-			}
-			for (int c = 0; c < 4; c++)
-				out[x * 4 + c] = (uint8_t)(sum[c] / n);
-		}
-	}
-	return tex;
-}
-
-static vita2d_texture *decode_png(const unsigned char *data, size_t size, int max_width) {
+static int decode_png(const unsigned char *data, size_t size, int max_width, Pixels *out) {
 	png_image image;
 	memset(&image, 0, sizeof(image));
 	image.version = PNG_IMAGE_VERSION;
 	if (!png_image_begin_read_from_memory(&image, data, size))
-		return NULL;
-	vita2d_texture *tex = NULL;
+		return -1;
 	image.format = PNG_FORMAT_RGBA; // vita2d's default texture layout
-	int factor = max_width > 0 ? (int)image.width / max_width : 1;
-	if (factor >= 2 && image.width <= 4096 && image.height <= 4096) {
-		// A big picture shown small: decode, then shrink, so grids of
-		// screenshots don't fill memory with full-size textures.
-		uint8_t *pixels = malloc(PNG_IMAGE_SIZE(image));
-		if (pixels && png_image_finish_read(&image, NULL, pixels, 0, NULL))
-			tex = shrink_into_texture(pixels, (int)image.width, (int)image.height, factor);
-		free(pixels);
-		png_image_free(&image);
-		if (!tex)
-			log_write("image: PNG error: %s", image.message[0] ? image.message : "unsupported image");
-		return tex;
+	int rc = -1;
+	if (image.width > 0 && image.height > 0 && image.width <= 4096 && image.height <= 4096) {
+		uint8_t *buffer = malloc(PNG_IMAGE_SIZE(image));
+		if (buffer && png_image_finish_read(&image, NULL, buffer, 0, NULL)) {
+			*out = (Pixels){buffer, (int)image.width, (int)image.height};
+			// A big picture shown small (grid cards): keep only what's needed.
+			int factor = max_width > 0 ? out->w / max_width : 1;
+			if (factor >= 2)
+				shrink(out, factor);
+			rc = 0;
+		} else {
+			free(buffer);
+		}
 	}
-	if (image.width > 0 && image.height > 0 && image.width <= 4096 && image.height <= 4096)
-		tex = vita2d_create_empty_texture(image.width, image.height);
-	// For 8-bit RGBA the row stride is given in bytes (one byte per component).
-	if (tex && !png_image_finish_read(&image, NULL, vita2d_texture_get_datap(tex),
-	                                  (png_int_32)vita2d_texture_get_stride(tex), NULL)) {
-		vita2d_free_texture(tex); // never drawn, so safe to free here
-		tex = NULL;
-	}
-	if (!tex)
+	if (rc != 0)
 		log_write("image: PNG error: %s", image.message[0] ? image.message : "unsupported image");
 	png_image_free(&image);
-	return tex;
+	return rc;
 }
 
-static vita2d_texture *decode(const unsigned char *data, size_t size, int max_width) {
-	vita2d_texture *tex = NULL;
+static int decode(const unsigned char *data, size_t size, int max_width, Pixels *out) {
 	if (size > 3 && data[0] == 0xFF && data[1] == 0xD8)
-		tex = decode_jpeg(data, size, max_width);
-	else if (size > 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G')
-		tex = decode_png(data, size, max_width);
-	if (tex)
-		vita2d_texture_set_filters(tex, SCE_GXM_TEXTURE_FILTER_LINEAR, SCE_GXM_TEXTURE_FILTER_LINEAR);
-	return tex;
+		return decode_jpeg(data, size, max_width, out);
+	if (size > 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G')
+		return decode_png(data, size, max_width, out);
+	return -1;
 }
 
-static vita2d_texture *load(Slot *job, NetClient *net) {
+static int load(Slot *job, NetClient *net, Pixels *out) {
 	char *data = NULL;
 	size_t size = 0;
 	if (fs_read_file(job->path, &data, &size) == 0 && size > 0) {
-		vita2d_texture *tex = decode((unsigned char *)data, size, job->max_width);
-		if (!tex)
+		int rc = decode((unsigned char *)data, size, job->max_width, out);
+		if (rc != 0)
 			log_write("image: could not decode %s", job->path);
 		free(data);
-		if (tex || !job->url[0])
-			return tex;
+		if (rc == 0 || !job->url[0])
+			return rc;
 		remove(job->path); // corrupt cache entry: fetch it again
 	}
 	if (!job->url[0] || !net)
-		return NULL;
+		return -1;
 	if (net_get(net, job->url, &data, &size, 4 * 1024 * 1024, NULL, &stopping) != NET_OK) {
 		log_write("image: %s: %s", job->url, net_error(net));
-		return NULL;
+		return -1;
 	}
-	vita2d_texture *tex = decode((unsigned char *)data, size, 0);
-	if (tex)
+	int rc = decode((unsigned char *)data, size, 0, out);
+	if (rc == 0)
 		fs_write_file(job->path, data, size);
 	else
 		log_write("image: could not decode %u bytes from %s", (unsigned)size, job->url);
 	free(data);
-	return tex;
+	return rc;
 }
 
 static Slot *next_job(void) {
@@ -241,11 +240,14 @@ static void *worker(void *arg) {
 		Slot job = *s; // work on a copy without holding the lock
 		pthread_mutex_unlock(&lock);
 
-		vita2d_texture *tex = load(&job, net);
+		Pixels px = {NULL, 0, 0};
+		int rc = load(&job, net, &px);
 
 		pthread_mutex_lock(&lock);
-		s->tex = tex;
-		s->state = tex ? SLOT_READY : SLOT_FAILED;
+		s->pixels = rc == 0 ? px.data : NULL;
+		s->pixels_w = px.w;
+		s->pixels_h = px.h;
+		s->state = rc == 0 ? SLOT_DECODED : SLOT_FAILED;
 		s->ready_at = now_us();
 	}
 	pthread_mutex_unlock(&lock);
@@ -268,9 +270,11 @@ void images_shutdown(void) {
 	for (int i = 0; i < worker_count; i++)
 		pthread_join(workers[i], NULL);
 	vita2d_wait_rendering_done();
-	for (int i = 0; i < SLOTS; i++)
+	for (int i = 0; i < SLOTS; i++) {
 		if (slots[i].tex)
 			vita2d_free_texture(slots[i].tex);
+		free(slots[i].pixels);
+	}
 	memset(slots, 0, sizeof(slots));
 }
 
@@ -287,6 +291,32 @@ void images_frame(void) {
 		for (int i = 0; i < count; i++)
 			vita2d_free_texture(batch[i]);
 	}
+
+	// Turn decoded pictures into textures, here on the main thread and before
+	// this frame's drawing starts.
+	int budget = UPLOAD_PIXELS_PER_FRAME;
+	pthread_mutex_lock(&lock);
+	for (int i = 0; i < SLOTS && budget > 0; i++) {
+		Slot *s = &slots[i];
+		if (s->state != SLOT_DECODED)
+			continue;
+		vita2d_texture *tex = vita2d_create_empty_texture((unsigned)s->pixels_w, (unsigned)s->pixels_h);
+		if (tex) {
+			uint8_t *dst = vita2d_texture_get_datap(tex);
+			unsigned stride = vita2d_texture_get_stride(tex);
+			size_t row = (size_t)s->pixels_w * 4;
+			for (int y = 0; y < s->pixels_h; y++)
+				memcpy(dst + (size_t)y * stride, s->pixels + (size_t)y * row, row);
+			vita2d_texture_set_filters(tex, SCE_GXM_TEXTURE_FILTER_LINEAR, SCE_GXM_TEXTURE_FILTER_LINEAR);
+		}
+		free(s->pixels);
+		s->pixels = NULL;
+		s->tex = tex;
+		s->state = tex ? SLOT_READY : SLOT_FAILED;
+		s->ready_at = now_us();
+		budget -= s->pixels_w * s->pixels_h;
+	}
+	pthread_mutex_unlock(&lock);
 }
 
 // Finds a slot to reuse. Called with the lock held.
