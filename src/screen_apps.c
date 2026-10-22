@@ -94,6 +94,7 @@ void apps_reapply_all(void) {
 			snprintf(job->ids[job->count++], sizeof(job->ids[0]), "%s", g_apps.items[i].id);
 	if (job->count == 0) {
 		free(job);
+		app_toast("Every custom look is still in place");
 		return;
 	}
 	app_run("Putting your artwork back...", reapply_work, reapply_done, job);

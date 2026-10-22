@@ -9,7 +9,7 @@
 #include "psvt.h"
 #include "ui.h"
 
-#define APP_VERSION "1.2.0"
+#define APP_VERSION "1.3.0"
 #define APP_AUTHOR "Sevy (@SevyW)"
 
 typedef enum { TAB_DISCOVER, TAB_LIBRARY, TAB_ASSETS, TAB_APPS, TAB_SETTINGS, TAB_COUNT } Tab;

@@ -98,7 +98,7 @@ static void test_source(int index) {
 static void ask_next_key(void) {
 	const ArtSource *s = artwork_get(menu_source);
 	keys_get(s->keys[typing], typed[typing], sizeof(typed[0]));
-	ime_open(s->key_prompts[typing], typed[typing], KEY_VALUE_MAX - 1);
+	ime_open_code(s->key_prompts[typing], typed[typing], KEY_VALUE_MAX - 1);
 }
 
 static void start_typing(void) {

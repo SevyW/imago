@@ -49,7 +49,7 @@ static void utf16_to_utf8(const uint16_t *src, char *dst, size_t max) {
 	dst[n] = '\0';
 }
 
-int ime_open(const char *title, const char *initial, int max_length) {
+static int open_dialog(const char *title, const char *initial, int max_length, int code) {
 	if (active)
 		return -1;
 	utf8_to_utf16(title, title_utf16, 64);
@@ -60,8 +60,8 @@ int ime_open(const char *title, const char *initial, int max_length) {
 	sceImeDialogParamInit(&param);
 	param.supportedLanguages = 0;
 	param.languagesForced = SCE_FALSE;
-	param.type = SCE_IME_TYPE_DEFAULT;
-	param.option = 0;
+	param.type = code ? SCE_IME_TYPE_BASIC_LATIN : SCE_IME_TYPE_DEFAULT;
+	param.option = code ? SCE_IME_OPTION_NO_AUTO_CAPITALIZATION | SCE_IME_OPTION_NO_ASSISTANCE : 0;
 	param.textBoxMode = SCE_IME_DIALOG_TEXTBOX_MODE_WITH_CLEAR;
 	param.title = title_utf16;
 	param.maxTextLength = (SceUInt32)(max_length < MAX_CHARS ? max_length : MAX_CHARS);
@@ -71,6 +71,14 @@ int ime_open(const char *title, const char *initial, int max_length) {
 		return -1;
 	active = 1;
 	return 0;
+}
+
+int ime_open(const char *title, const char *initial, int max_length) {
+	return open_dialog(title, initial, max_length, 0);
+}
+
+int ime_open_code(const char *title, const char *initial, int max_length) {
+	return open_dialog(title, initial, max_length, 1);
 }
 
 int ime_active(void) {

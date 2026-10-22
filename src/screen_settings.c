@@ -323,7 +323,8 @@ static void activate(int item) {
 	case ITEM_ABOUT:
 		dialog_message("Imago " APP_VERSION,
 		               "Created by " APP_AUTHOR ". github.com/SevyW/imago\n\n"
-		               "A fast custom theme browser for PS Vita. Themes come from psvt.ovh, the free "
+		               "A fast custom theme browser for PS Vita, which also restyles your apps' bubbles "
+		               "and LiveAreas. Themes come from psvt.ovh, the free "
 		               "repository run by Red Squirrel, author of Custom Themes Manager. The site is "
 		               "funded by donations: please consider supporting it.");
 		break;

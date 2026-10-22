@@ -13,7 +13,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 
 set(VITA_APP_NAME "Imago")
 set(VITA_TITLEID  "IMAG00001")
-set(VITA_VERSION  "01.20")
+set(VITA_VERSION  "01.30")
 
 option(IMAGO_AUTOPILOT "Replay scripted input from ux0:data/Imago/autopilot.txt (testing only)" OFF)
 
