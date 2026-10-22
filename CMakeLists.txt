@@ -149,15 +149,6 @@ target_link_libraries(${PROJECT_NAME}
   SceTouch_stub
 )
 
-# ScreenScraper only answers apps with developer credentials it issued; they
-# are kept out of the repository and given at build time.
-set(IMAGO_SS_DEVID "" CACHE STRING "ScreenScraper developer id (optional)")
-set(IMAGO_SS_DEVPASSWORD "" CACHE STRING "ScreenScraper developer password (optional)")
-if(IMAGO_SS_DEVID AND IMAGO_SS_DEVPASSWORD)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE
-    IMAGO_SS_DEVID="${IMAGO_SS_DEVID}" IMAGO_SS_DEVPASSWORD="${IMAGO_SS_DEVPASSWORD}")
-endif()
-
 if(IMAGO_AUTOPILOT)
   target_compile_definitions(${PROJECT_NAME} PRIVATE IMAGO_AUTOPILOT)
 endif()

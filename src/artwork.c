@@ -108,7 +108,7 @@ static void describe(NetClient *net, int rc, const char *body, const char *who, 
 			snprintf(why, sizeof(why), "%s", m);
 			cJSON_Delete(json);
 		} else if (body) {
-			snprintf(why, sizeof(why), "%.100s", body); // ScreenScraper answers in plain text
+			snprintf(why, sizeof(why), "%.100s", body); // some errors come as plain text
 		}
 		if (status == 429 || status == 430)
 			snprintf(err, size, "%s says there were too many requests. Wait a minute and try again.", who);
@@ -619,70 +619,6 @@ static int rawg_test(NetClient *net, char *err, size_t size) {
 	return json ? 0 : -1;
 }
 
-// --- ScreenScraper -----------------------------------------------------------------
-// Needs developer credentials for Imago (given by ScreenScraper), set at build
-// time: cmake -DIMAGO_SS_DEVID=... -DIMAGO_SS_DEVPASSWORD=...
-
-#if defined(IMAGO_SS_DEVID) && defined(IMAGO_SS_DEVPASSWORD)
-#define HAVE_SCREENSCRAPER 1
-#define SS "https://api.screenscraper.fr/api2/"
-#define SS_VITA 62
-
-static void ss_credentials(char *out, size_t size) {
-	char user[KEY_VALUE_MAX], password[KEY_VALUE_MAX], enc_user[KEY_VALUE_MAX * 3], enc_password[KEY_VALUE_MAX * 3];
-	keys_get("screenscraper_user", user, sizeof(user));
-	keys_get("screenscraper_password", password, sizeof(password));
-	url_encode(user, enc_user, sizeof(enc_user));
-	url_encode(password, enc_password, sizeof(enc_password));
-	snprintf(out, size, "devid=%s&devpassword=%s&softname=Imago&output=json&ssid=%s&sspassword=%s", IMAGO_SS_DEVID,
-	         IMAGO_SS_DEVPASSWORD, enc_user, enc_password);
-}
-
-static int ss_search(NetClient *net, const ArtQuery *q, ArtResults *out, char *err, size_t size) {
-	char creds[KEY_VALUE_MAX * 7], title[128], enc[400], url[KEY_VALUE_MAX * 8];
-	ss_credentials(creds, sizeof(creds));
-	clean_title(q->title, title, sizeof(title));
-	url_encode(title, enc, sizeof(enc));
-	snprintf(url, sizeof(url), SS "jeuRecherche.php?%s&systemeid=%d&recherche=%s", creds, SS_VITA, enc);
-	cJSON *json = fetch_json(net, url, NULL, "ScreenScraper", 1, err, size);
-	if (!json)
-		return -1;
-	static const char *const icon_types[] = {"box-2D", "wheel-hd", "wheel", NULL};
-	static const char *const wide_types[] = {"fanart", "ss", "sstitle", NULL};
-	const char *const *types = q->part == ART_ICON ? icon_types : wide_types;
-	const cJSON *games = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(json, "response"), "jeux");
-	const cJSON *game, *media;
-	int count = 0;
-	cJSON_ArrayForEach(game, games) {
-		if (count++ >= GAMES_PER_SEARCH)
-			break;
-		const char *name = jstr(cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(game, "noms"), 0), "text");
-		for (int t = 0; types[t]; t++)
-			cJSON_ArrayForEach(media, cJSON_GetObjectItemCaseSensitive(game, "medias")) {
-				if (strcmp(jstr(media, "type"), types[t]) != 0)
-					continue;
-				char thumb[512], full_url[512], label[96];
-				// The media URLs carry the credentials; ask for JPEGs a sensible size.
-				snprintf(thumb, sizeof(thumb), "%s&maxwidth=320&outputformat=jpg", jstr(media, "url"));
-				snprintf(full_url, sizeof(full_url), "%s&maxwidth=1920&outputformat=png", jstr(media, "url"));
-				snprintf(label, sizeof(label), "%s \xC2\xB7 %s", name, types[t]);
-				add(out, thumb, full_url, label, 0, 0);
-			}
-	}
-	cJSON_Delete(json);
-	return 0;
-}
-
-static int ss_test(NetClient *net, char *err, size_t size) {
-	char creds[KEY_VALUE_MAX * 7], url[KEY_VALUE_MAX * 8];
-	ss_credentials(creds, sizeof(creds));
-	snprintf(url, sizeof(url), SS "ssuserInfos.php?%s", creds);
-	cJSON *json = fetch_json(net, url, NULL, "ScreenScraper", 1, err, size);
-	cJSON_Delete(json);
-	return json ? 0 : -1;
-}
-#endif
-
 // --- the list ----------------------------------------------------------------------
 
 #define ICON (1u << ART_ICON)
@@ -697,10 +633,6 @@ static const char *const tgdb_keys[] = {"thegamesdb", NULL};
 static const char *const tgdb_prompts[] = {"TheGamesDB API key", NULL};
 static const char *const rawg_keys[] = {"rawg", NULL};
 static const char *const rawg_prompts[] = {"RAWG API key", NULL};
-#ifdef HAVE_SCREENSCRAPER
-static const char *const ss_keys[] = {"screenscraper_user", "screenscraper_password", NULL};
-static const char *const ss_prompts[] = {"ScreenScraper user name", "ScreenScraper password", NULL};
-#endif
 
 static const ArtSource sources[] = {
     {"vitadb", "VitaDB", NULL, NULL,
@@ -728,12 +660,6 @@ static const ArtSource sources[] = {
      "Free for personal use. Sign up at rawg.io/apidocs and press \"Get API Key\". Backgrounds and screenshots "
      "only.\n\nIn a QR code: rawg=YOUR_KEY",
      "Data and images from RAWG (rawg.io)", BG | GATE, rawg_search, rawg_test},
-#ifdef HAVE_SCREENSCRAPER
-    {"screenscraper", "ScreenScraper", ss_keys, ss_prompts,
-     "Free account at screenscraper.fr: enter your user name and password.\n\nIn a QR code, two lines: "
-     "screenscraper_user=NAME and screenscraper_password=PASSWORD",
-     "Images from ScreenScraper (screenscraper.fr)", ICON | BG | GATE, ss_search, ss_test},
-#endif
 };
 
 int artwork_count(void) {

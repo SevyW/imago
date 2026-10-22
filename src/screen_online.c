@@ -122,10 +122,16 @@ void online_open(const char *id, const char *app_title, ArtPart which) {
 	part = which;
 	clear_results();
 	tab_count = 0;
-	for (int i = 0; i < artwork_count() && tab_count < MAX_TABS; i++)
-		if (artwork_ready(artwork_get(i)) && (artwork_get(i)->parts & (1u << which))) {
-			memset(&tabs[tab_count], 0, sizeof(tabs[0]));
-			tabs[tab_count++].source = i;
+	// VitaDB only knows homebrew: for retail games (PCSA00107...) it goes last.
+	int retail = strncmp(id, "PCS", 3) == 0;
+	for (int pass = 0; pass < 2; pass++)
+		for (int i = 0; i < artwork_count() && tab_count < MAX_TABS; i++) {
+			const ArtSource *s = artwork_get(i);
+			int last = retail && strcmp(s->id, "vitadb") == 0;
+			if (last == pass && artwork_ready(s) && (s->parts & (1u << which))) {
+				memset(&tabs[tab_count], 0, sizeof(tabs[0]));
+				tabs[tab_count++].source = i;
+			}
 		}
 	current = selected = 0;
 	scroll = scroll_target = 0.0f;

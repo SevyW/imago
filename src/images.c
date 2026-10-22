@@ -198,7 +198,7 @@ static int load(Slot *job, NetClient *net, Pixels *out) {
 	if (!job->url[0] || !net)
 		return -1;
 	if (net_get(net, job->url, &data, &size, 4 * 1024 * 1024, NULL, &stopping) != NET_OK) {
-		// Some sources put credentials in the query: log the address without it.
+		// Query strings can carry keys: log the address without one.
 		log_write("image: %.*s: %s", (int)strcspn(job->url, "?"), job->url, net_error(net));
 		return -1;
 	}
