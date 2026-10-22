@@ -35,6 +35,7 @@ void config_load(void) {
 	g_config.sort = (int)read_uint(text, "sort");
 	g_config.partition = (int)read_uint(text, "partition");
 	g_config.last_seen_id = (uint32_t)read_uint(text, "last_seen_id");
+	g_config.share_photos = read_uint(text, "share_photos") != 0;
 	if (g_config.sort < 0 || g_config.sort >= 6)
 		g_config.sort = 0;
 	if (g_config.partition < 0 || g_config.partition >= PARTITION_COUNT)
@@ -43,8 +44,8 @@ void config_load(void) {
 
 void config_save(void) {
 	char text[256];
-	int n = snprintf(text, sizeof(text), "sort=%d\npartition=%d\nlast_seen_id=%u\n", g_config.sort,
-	                 g_config.partition, (unsigned)g_config.last_seen_id);
+	int n = snprintf(text, sizeof(text), "sort=%d\npartition=%d\nlast_seen_id=%u\nshare_photos=%d\n", g_config.sort,
+	                 g_config.partition, (unsigned)g_config.last_seen_id, g_config.share_photos);
 	fs_mkdir_p(DATA_DIR);
 	fs_write_file(CONFIG_PATH, text, (size_t)n);
 }

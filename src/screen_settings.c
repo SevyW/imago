@@ -6,6 +6,7 @@
 #include "images.h"
 #include "jobs.h"
 #include "log.h"
+#include "photos.h"
 #include "themedb.h"
 
 #include <math.h>
@@ -17,13 +18,25 @@
 #include <time.h>
 
 #define LIST_TOP (HEADER_H + 20.0f)
+#define LIST_BOTTOM (FOOTER_Y - 8.0f)
 #define ROW_H 54.0f
 #define ROW_GAP 6.0f
 #define MAX_BACKUPS (1 + BACKUP_AUTO_COUNT)
 
-enum { ITEM_PARTITION, ITEM_BACKUP, ITEM_RESTORE, ITEM_CACHE, ITEM_RESTART, ITEM_REPORT, ITEM_ABOUT, ITEM_COUNT };
+enum {
+	ITEM_PARTITION,
+	ITEM_PHOTOS,
+	ITEM_BACKUP,
+	ITEM_RESTORE,
+	ITEM_CACHE,
+	ITEM_RESTART,
+	ITEM_REPORT,
+	ITEM_ABOUT,
+	ITEM_COUNT
+};
 
 static int selected;
+static float scroll, scroll_target;
 static long long cache_size = -1;
 static int cache_busy;
 
@@ -73,6 +86,111 @@ static void run_cache_job(int clear) {
 	job->clear = clear;
 	cache_busy = 1;
 	jobs_submit(cache_work, cache_done, job);
+}
+
+// --- theme wallpapers in Photos ------------------------------------------------------
+
+static int photos_busy, photos_count = -1;
+
+typedef struct {
+	LibraryItem *items;
+	int count;
+	int unshare; // delete what was added instead
+	int announce;
+	int result;
+	char err[160];
+} PhotosJob;
+
+static void photos_work(void *ctx, NetClient *net) {
+	(void)net;
+	PhotosJob *job = ctx;
+	job->result = job->unshare ? photos_unshare() : photos_share(job->items, job->count, job->err, sizeof(job->err));
+}
+
+static void photos_done(void *ctx) {
+	PhotosJob *job = ctx;
+	photos_busy = 0;
+	photos_count = photos_shared_count();
+	char text[160];
+	if (job->unshare) {
+		log_write("photos: deleted %d picture%s Imago had added", job->result, job->result == 1 ? "" : "s");
+		snprintf(text, sizeof(text), "Deleted %d picture%s from Photos", job->result, job->result == 1 ? "" : "s");
+		app_toast(text);
+	} else if (job->result < 0) {
+		log_write("photos: sharing failed: %s", job->err);
+		if (job->announce)
+			dialog_message("Couldn't add to Photos", job->err);
+	} else if (job->result > 0 || job->announce) {
+		log_write("photos: added %d picture%s", job->result, job->result == 1 ? "" : "s");
+		snprintf(text, sizeof(text), job->result ? "Added %d theme picture%s to Photos" : "Photos already has every theme picture",
+		         job->result, job->result == 1 ? "" : "s");
+		app_toast(text);
+	}
+	free(job->items);
+	free(job);
+}
+
+static void run_photos_job(int unshare, int announce) {
+	PhotosJob *job = calloc(1, sizeof(*job));
+	if (!job || photos_busy) {
+		free(job);
+		return;
+	}
+	job->unshare = unshare;
+	job->announce = announce;
+	if (!unshare) { // a snapshot of the library for the worker
+		job->items = malloc((size_t)(g_library.count ? g_library.count : 1) * sizeof(LibraryItem));
+		if (!job->items) {
+			free(job);
+			return;
+		}
+		memcpy(job->items, g_library.items, (size_t)g_library.count * sizeof(LibraryItem));
+		job->count = g_library.count;
+	}
+	photos_busy = 1;
+	jobs_submit(photos_work, photos_done, job);
+}
+
+void settings_share_photos(int announce) {
+	if (g_config.share_photos && !g_library_loading)
+		run_photos_job(0, announce);
+}
+
+static void on_stop_sharing(int choice) {
+	if (choice < 0)
+		return;
+	g_config.share_photos = 0;
+	config_save();
+	log_write("photos: sharing turned off%s", choice == 1 ? ", deleting Imago's pictures" : "");
+	if (choice == 1)
+		run_photos_job(1, 1);
+	else
+		app_toast("Theme pictures stay in Photos; new themes won't be added");
+}
+
+static void toggle_photos(void) {
+	if (photos_busy) {
+		app_toast("Still working on Photos...");
+		return;
+	}
+	if (!g_config.share_photos) {
+		g_config.share_photos = 1;
+		config_save();
+		log_write("photos: sharing turned on");
+		app_toast("Adding theme wallpapers and lock screens to Photos...");
+		settings_share_photos(1);
+		return;
+	}
+	int count = photos_shared_count();
+	if (count == 0) {
+		on_stop_sharing(0);
+		return;
+	}
+	static char keep[64], drop[64];
+	snprintf(keep, sizeof(keep), "Turn off, keep the %d picture%s", count, count == 1 ? "" : "s");
+	snprintf(drop, sizeof(drop), "!Turn off and delete them from Photos");
+	const char *options[2] = {keep, drop};
+	dialog_menu("Stop adding theme pictures to Photos?", options, 2, 0, on_stop_sharing);
 }
 
 static void on_restart(int choice) {
@@ -140,6 +258,9 @@ static void activate(int item) {
 	case ITEM_PARTITION:
 		cycle_partition(1);
 		break;
+	case ITEM_PHOTOS:
+		toggle_photos();
+		break;
 	case ITEM_BACKUP:
 		fs_mkdir_p(BACKUP_DIR);
 		if (themedb_backup(BACKUP_MANUAL, err) == 0)
@@ -195,22 +316,47 @@ void settings_update(const Input *in) {
 		cycle_partition((in->repeat & SCE_CTRL_LEFT) ? -1 : 1);
 	if (in->pressed & BTN_OK)
 		activate(selected);
-	if (in->tapped) {
-		int i = (int)(((float)in->tap_y - LIST_TOP) / (ROW_H + ROW_GAP));
-		if (in->tap_y >= LIST_TOP && i >= 0 && i < ITEM_COUNT) {
+	if (in->dragging)
+		scroll = scroll_target = scroll_target - in->drag_dy;
+	if (in->tapped && in->tap_y >= LIST_TOP && in->tap_y <= LIST_BOTTOM) {
+		int i = (int)(((float)in->tap_y - LIST_TOP + scroll) / (ROW_H + ROW_GAP));
+		if (i >= 0 && i < ITEM_COUNT) {
 			selected = i;
 			activate(i);
 		}
 	}
+	// The list is taller than the screen: keep the selected row in view.
+	if (!in->dragging) {
+		float top = (float)selected * (ROW_H + ROW_GAP);
+		if (top - 6.0f < scroll_target)
+			scroll_target = top - 6.0f;
+		if (top + ROW_H + 6.0f > scroll_target + (LIST_BOTTOM - LIST_TOP))
+			scroll_target = top + ROW_H + 6.0f - (LIST_BOTTOM - LIST_TOP);
+	}
+	float max = (float)ITEM_COUNT * (ROW_H + ROW_GAP) - ROW_GAP + 6.0f - (LIST_BOTTOM - LIST_TOP);
+	if (scroll_target > max)
+		scroll_target = max > 0 ? max : 0;
+	if (scroll_target < 0)
+		scroll_target = 0;
+	scroll = ui_approach(scroll, scroll_target, 16.0f);
 }
 
 void settings_draw(void) {
 	static const char *const titles[ITEM_COUNT] = {
-		"Install location", "Back up theme database", "Restore theme database",
+		"Install location", "Theme wallpapers in Photos", "Back up theme database", "Restore theme database",
 		"Clear image cache", "Restart PS Vita", "Report a problem", "About Imago",
 	};
 	char values[ITEM_COUNT][64] = {{0}};
 	snprintf(values[ITEM_PARTITION], 64, "%scustomtheme", config_partition_device(g_config.partition));
+	if (photos_count < 0)
+		photos_count = photos_shared_count();
+	if (photos_busy)
+		snprintf(values[ITEM_PHOTOS], 64, "Working...");
+	else if (g_config.share_photos)
+		snprintf(values[ITEM_PHOTOS], 64, "On \xC2\xB7 %d picture%s in Photos", photos_count,
+		         photos_count == 1 ? "" : "s");
+	else
+		snprintf(values[ITEM_PHOTOS], 64, "Use them as wallpapers on any home-screen page");
 	snprintf(values[ITEM_BACKUP], 64, "Saved to %s", BACKUP_MANUAL);
 	snprintf(values[ITEM_RESTORE], 64, "Choose a manual or automatic backup");
 	if (cache_busy || cache_size < 0)
@@ -221,9 +367,13 @@ void settings_draw(void) {
 	snprintf(values[ITEM_REPORT], 64, "How to send us the log");
 	snprintf(values[ITEM_ABOUT], 64, "Version " APP_VERSION " \xC2\xB7 by " APP_AUTHOR);
 
+	vita2d_enable_clipping();
+	vita2d_set_clip_rectangle(0, (int)LIST_TOP - 6, SCREEN_W, (int)LIST_BOTTOM + 4);
 	for (int i = 0; i < ITEM_COUNT; i++) {
 		float x = MARGIN, w = SCREEN_W - 2 * MARGIN;
-		float y = LIST_TOP + (float)i * (ROW_H + ROW_GAP);
+		float y = LIST_TOP + (float)i * (ROW_H + ROW_GAP) - scroll;
+		if (y + ROW_H < LIST_TOP - 6.0f || y > LIST_BOTTOM)
+			continue;
 		int focused = i == selected;
 		ui_rrect(x, y, w, ROW_H, 14.0f, focused ? C_SURFACE2 : C_SURFACE);
 		ui_text(FONT_BOLD, x + 20.0f, y + 23.0f, C_TEXT, titles[i]);
@@ -238,11 +388,19 @@ void settings_draw(void) {
 			ui_line(right - (float)vw - 32.0f, mid - 5.0f, right - (float)vw - 38.0f, mid, 2.0f, C_TEXT3);
 			ui_line(right - (float)vw - 38.0f, mid, right - (float)vw - 32.0f, mid + 5.0f, 2.0f, C_TEXT3);
 		}
+		if (i == ITEM_PHOTOS) { // an on/off switch
+			float sw = 44.0f, sh = 24.0f, sx = x + w - 20.0f - sw, cy = y + ROW_H * 0.5f;
+			int on = g_config.share_photos;
+			ui_rrect(sx, cy - sh * 0.5f, sw, sh, sh * 0.5f, on ? C_ACCENT : C_SURFACE3);
+			vita2d_draw_fill_circle(on ? sx + sw - sh * 0.5f : sx + sh * 0.5f, cy, 9.0f, C_TEXT);
+		}
 		if (focused)
 			ui_rrect_outline(x - 4.0f, y - 4.0f, w + 8.0f, ROW_H + 8.0f, 18.0f, 2.5f,
 			                 ui_alpha(C_ACCENT, 0.75f + 0.25f * sinf(ui_time() * 4.0f)));
 	}
 
-	Hint hints[] = {{ui_ok_glyph(), selected == ITEM_PARTITION ? "Change" : "Select"}};
+	vita2d_disable_clipping();
+
+	Hint hints[] = {{ui_ok_glyph(), selected == ITEM_PARTITION ? "Change" : selected == ITEM_PHOTOS ? "On / off" : "Select"}};
 	app_footer(hints, 1, NULL);
 }

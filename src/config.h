@@ -19,6 +19,7 @@ typedef struct {
 	int sort;              // PsvtSort
 	int partition;         // where new themes are installed
 	uint32_t last_seen_id; // newest theme id seen last session ("NEW" badges)
+	int share_photos;      // add theme wallpapers to the Photos app (photos.h)
 } Config;
 
 extern Config g_config;

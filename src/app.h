@@ -66,6 +66,9 @@ void assets_screen_draw(void);
 void assets_screen_leave(void);
 
 void settings_update(const Input *in);
+// When "Theme wallpapers in Photos" is on, adds what isn't shared yet (in the
+// background). announce: report the result even when nothing was added.
+void settings_share_photos(int announce);
 void settings_draw(void);
 
 // Shared drawing helper: install/update button state for a repository theme.

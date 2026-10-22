@@ -85,6 +85,7 @@ static void library_done(void *ctx) {
 	int local = 0;
 	for (int i = 0; i < g_library.count; i++)
 		local += !g_library.items[i].registered;
+	settings_share_photos(0); // new or saved themes' wallpapers, if that's on
 	if (g_library.db_ok)
 		log_write("library: %d themes (%d not added)", g_library.count, local);
 	else

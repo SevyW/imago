@@ -65,6 +65,7 @@ add_executable(${PROJECT_NAME}
   src/xmltree.c
   src/imageio.c
   src/jpegio.c
+  src/photos.c
   src/pictures.c
   src/picture_picker.c
   src/themedb.c
@@ -106,6 +107,7 @@ target_link_libraries(${PROJECT_NAME}
   SceLibKernel_stub
   SceNet_stub
   SceNetCtl_stub
+  ScePhotoExport_stub
   ScePgf_stub
   ScePower_stub
   SceProcessmgr_stub

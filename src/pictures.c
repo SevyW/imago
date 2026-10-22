@@ -1,6 +1,7 @@
 #include "pictures.h"
 
 #include "fs.h"
+#include "photos.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,6 +44,10 @@ static int visit(const char *name, int is_dir, void *user) {
 	}
 	if (!is_picture(name) || strlen(w->dir) + strlen(name) + 2 > 250)
 		return 0;
+	char path[384];
+	snprintf(path, sizeof(path), "%s/%s", w->dir, name);
+	if (photos_is_shared_copy(path))
+		return 0; // a theme wallpaper Imago put in Photos: it's already on the shelves
 	PictureList *list = w->list;
 	if (list->count == w->capacity) {
 		int cap = w->capacity ? w->capacity * 2 : 64;
