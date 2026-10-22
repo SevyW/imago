@@ -11,7 +11,7 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
 ![Language](https://img.shields.io/badge/code-C11-a8b9cc?logo=c&logoColor=white)
 ![SDK](https://img.shields.io/badge/built%20with-VitaSDK-988879)
 ![Built with](https://img.shields.io/badge/vibe--coded%20with-Claude-d97757?logo=anthropic&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.0.0-c2292f)
+![Version](https://img.shields.io/badge/version-1.1.0-c2292f)
 ![Status](https://img.shields.io/badge/status-console--tested-3fa35b)
 ![License](https://img.shields.io/badge/license-MIT-f6eede)
 [![Ko-fi](https://img.shields.io/badge/support%20me-Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/sevyw)
@@ -111,22 +111,22 @@ Measured on psvt.ovh's most downloaded themes:
 
 ## 📦 Download
 
-**[Imago v1.0.0](https://github.com/SevyW/imago/releases/tag/v1.0.0)**: the latest release. ([All releases](https://github.com/SevyW/imago/releases))
+**[Imago v1.1.0](https://github.com/SevyW/imago/releases/tag/v1.1.0)**: the latest release. ([All releases](https://github.com/SevyW/imago/releases))
 
 | File | Size | MD5 |
 |---|---|---|
-| `imago-v1.0.0.vpk` | 3.5 MB | `8004f21391feb42816f5da38e9d09066` |
+| `imago-v1.1.0.vpk` | 3.5 MB | `27adc022ea995cd61b31ec3952810b19` |
 
 <details>
 <summary>SHA-256 and how to check the file</summary>
 
 ```
-SHA-256  8591813c0999e7b83e1c1052f67faabfb609890bb2f056f062a0d338139f3f37
+SHA-256  8767cd092435fe23cfde2bfc7fc062b13e56e8afed1a99db1129008954e37f26
 ```
 
 ```bash
-md5sum imago-v1.0.0.vpk                     # Linux / macOS / Git Bash
-certutil -hashfile imago-v1.0.0.vpk MD5     # Windows
+md5sum imago-v1.1.0.vpk                     # Linux / macOS / Git Bash
+certutil -hashfile imago-v1.1.0.vpk MD5     # Windows
 ```
 
 Each release's notes list what changed, what to test, and how to recover if something goes wrong.
