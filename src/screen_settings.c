@@ -177,7 +177,7 @@ static void toggle_photos(void) {
 		g_config.share_photos = 1;
 		config_save();
 		log_write("photos: sharing turned on");
-		app_toast("Adding theme wallpapers and lock screens to Photos...");
+		app_toast("Adding theme pictures to Photos. With many themes, the first time takes a while.");
 		settings_share_photos(1);
 		return;
 	}
