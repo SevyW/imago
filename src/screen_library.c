@@ -7,6 +7,7 @@
 #include "images.h"
 #include "ime.h"
 #include "jobs.h"
+#include "log.h"
 #include "tasks.h"
 
 #include <math.h>
@@ -245,6 +246,7 @@ static void move_to(int folder) {
 		app_toast("Couldn't move it: too many themes in folders");
 		return;
 	}
+	log_write("folders: %s -> %s", action_item.dir, folder >= 0 ? folders_name(folder) : "top level");
 	char text[160];
 	if (folder >= 0)
 		snprintf(text, sizeof(text), "Moved to \"%s\"", folders_name(folder));
@@ -286,6 +288,7 @@ static void open_move_menu(void) {
 static void on_confirm_delete_folder(int choice) {
 	if (choice != 0)
 		return;
+	log_write("folders: deleted \"%s\"", folders_name(menu_folder));
 	folders_delete(menu_folder);
 	app_toast("Folder deleted. Its themes are back in your Library.");
 }

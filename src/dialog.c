@@ -1,5 +1,6 @@
 #include "dialog.h"
 
+#include "log.h"
 #include "ui.h"
 
 #include <stdio.h>
@@ -60,6 +61,7 @@ void dialog_confirm(const char *t, const char *msg, const char *confirm_label, i
 }
 
 void dialog_message(const char *t, const char *msg) {
+	log_write("message: %s: %s", t, msg);
 	open_dialog(KIND_MESSAGE, t, NULL);
 	snprintf(message, sizeof(message), "%s", msg);
 	snprintf(options[0], sizeof(options[0]), "OK");

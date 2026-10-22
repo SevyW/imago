@@ -1,0 +1,63 @@
+name: Something went wrong
+description: A crash, an error, or Imago doing something it shouldn't
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! The log is the most useful part: it shows what Imago was doing right before the problem.
+
+        **Getting the log:** in VitaShell, copy `ux0:data/Imago/log.txt` to your PC (over USB, or FTP from VitaShell's START menu). If there's also a `log-previous.txt`, attach that too. You can drag the files straight into the box below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+      placeholder: "The console restarted with a GPU error when I reopened Imago."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What were you doing just before?
+      description: The steps, as far as you remember. Does it happen every time?
+      placeholder: |
+        1. Opened Assets > Pictures and scrolled through my screenshots
+        2. Closed Imago and opened it again
+        3. ...
+  - type: textarea
+    id: log
+    attributes:
+      label: Imago's log
+      description: Drag `log.txt` (and `log-previous.txt` if you have it) here. It only lists what Imago did, nothing personal.
+      placeholder: Drop log.txt here
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Imago version
+      description: Shown in Imago's Settings > About Imago.
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: console
+    attributes:
+      label: Console
+      options:
+        - PS Vita 1000 (OLED)
+        - PS Vita 2000 (Slim)
+        - PS TV
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware and hack
+      placeholder: "3.65 with Ensō"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots or photos of the screen, the error code (Settings > System > Error History), or crash dumps (`ux0:data/psp2core-*.psp2dmp` from around the time it happened) all help.

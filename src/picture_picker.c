@@ -4,6 +4,7 @@
 #include "app.h"
 #include "images.h"
 #include "jobs.h"
+#include "log.h"
 #include "pictures.h"
 
 #include <math.h>
@@ -76,6 +77,7 @@ static void scan_done(void *ctx) {
 		pictures_free(&list);
 		list = job->result;
 		group_folders();
+		log_write("pictures: %d found in %d folder%s", list.count, folder_count, folder_count == 1 ? "" : "s");
 		folder = selected = 0;
 		scroll = scroll_target = chip_scroll = 0.0f;
 		pick_count = 0; // picks index the list, so they go with it

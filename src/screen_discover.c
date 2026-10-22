@@ -5,6 +5,7 @@
 #include "images.h"
 #include "ime.h"
 #include "jobs.h"
+#include "log.h"
 #include "tasks.h"
 
 #include <math.h>
@@ -121,6 +122,7 @@ static void page_done(void *ctx) {
 		} else {
 			failed = 1;
 			snprintf(error_text, sizeof(error_text), "%s", job->error);
+			log_write("discover: couldn't load page %d: %s", job->page, job->error);
 		}
 	}
 	free(job);

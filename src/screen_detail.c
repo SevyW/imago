@@ -3,6 +3,7 @@
 #include "dialog.h"
 #include "images.h"
 #include "jobs.h"
+#include "log.h"
 #include "tasks.h"
 
 #include <math.h>
@@ -70,6 +71,7 @@ static void detail_done(void *ctx) {
 }
 
 void detail_open(const PsvtTheme *t) {
+	log_write("detail: opened %u \"%s\"", (unsigned)t->id, t->title);
 	theme = *t;
 	memset(&detail, 0, sizeof(detail));
 	detail_state = 0;

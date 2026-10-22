@@ -4,6 +4,7 @@
 #include "dialog.h"
 #include "images.h"
 #include "ime.h"
+#include "log.h"
 #include "picture_picker.h"
 #include "tasks.h"
 #include "themedoc.h"
@@ -84,6 +85,7 @@ int studio_open_doc(void *doc_ptr, const char *new_name, int new_theme) {
 		themedoc_get_title(&work, base_title, sizeof(base_title));
 	snprintf(name, sizeof(name), "%s", new_name);
 	reset_pages();
+	log_write("studio: opened %s (%d pages)", new_theme ? "a new theme" : base_dir, page_count);
 	music_on = themedoc_has_part(&work, PART_MUSIC);
 	icons_on = themedoc_has_part(&work, PART_ICONS);
 	focus = ROW_NAME;
@@ -178,6 +180,10 @@ static void save(void) {
 	themedoc_credit(out, credit, sizeof(credit));
 	if (credit[0])
 		themedoc_set_provider(out, credit); // credit every author whose parts are used
+	log_write("studio: saving \"%s\": %d of %d pages, music %s, icons %s, pictures %s/%s", name, kept_pages(),
+	          page_count, music_on ? "on" : "off", icons_on ? "on" : "off",
+	          themedoc_uses_pictures(out, PART_WALLPAPERS) ? "pages" : "-",
+	          themedoc_uses_pictures(out, PART_LOCKSCREEN) ? "lock" : "-");
 	tasks_build(out, name, changes_previews());
 	char text[200];
 	snprintf(text, sizeof(text), "Saving \"%s\"...", name);

@@ -3,6 +3,7 @@
 #include "config.h"
 #include "fs.h"
 #include "jobs.h"
+#include "log.h"
 #include "net.h"
 #include "psvt.h"
 #include "theme.h"
@@ -378,6 +379,11 @@ static void *worker(void *arg) {
 		tasks[slot].state = t.kind == TASK_INSTALL ? TASK_DOWNLOADING : TASK_FINISHING;
 		pthread_mutex_unlock(&lock);
 
+		static const char *const kinds[] = {"install", "uninstall", "remove entry", "delete files", "add",
+		                                    "save"};
+		const char *kind = (unsigned)t.kind < sizeof(kinds) / sizeof(kinds[0]) ? kinds[t.kind] : "task";
+		log_write("task: %s \"%s\" (%s) started", kind, t.title, t.dir[0] ? t.dir : "new folder");
+		unsigned long long started = sceKernelGetProcessTimeWide();
 		int rc;
 		switch (t.kind) {
 		case TASK_INSTALL: rc = run_install(slot, &t, net); break;
@@ -390,7 +396,14 @@ static void *worker(void *arg) {
 			themedoc_free(t.doc);
 			free(t.doc);
 		}
+		unsigned long long ms = (sceKernelGetProcessTimeWide() - started) / 1000;
 		pthread_mutex_lock(&lock);
+		if (rc == 0)
+			log_write("task: %s \"%s\" done in %llu ms", kind, t.title, ms);
+		else if (rc == -2)
+			log_write("task: %s \"%s\" canceled", kind, t.title);
+		else
+			log_write("task: %s \"%s\" FAILED after %llu ms: %s", kind, t.title, ms, tasks[slot].message);
 		tasks[slot].doc = NULL;
 		tasks[slot].state = rc == 0 ? TASK_DONE : rc == -2 ? TASK_CANCELED : TASK_FAILED;
 		tasks[slot].progress = 1.0f;

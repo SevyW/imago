@@ -7,6 +7,7 @@
 #include "pictures.h"
 #include "images.h"
 #include "jobs.h"
+#include "log.h"
 #include "music.h"
 #include "themedoc.h"
 
@@ -259,6 +260,9 @@ static void create_theme(void) {
 	free(docs);
 	free(loaded);
 	themedoc_free(&pics);
+	log_write("assets: building from %d wallpaper%s (%d pictures)%s%s%s", picked_page_count,
+	          picked_page_count == 1 ? "" : "s", picture_count, lock >= 0 ? ", lock screen" : "",
+	          picked[ASSET_ICONS] >= 0 ? ", icons" : "", picked[ASSET_MUSIC] >= 0 ? ", music" : "");
 	if (!ok) {
 		themedoc_free(&result);
 		app_toast("Couldn't put that theme together");

@@ -15,6 +15,8 @@
 
 #include <math.h>
 #include <psp2/apputil.h>
+#include <psp2/kernel/modulemgr.h>
+#include <psp2/kernel/sysmem.h>
 #include <psp2/common_dialog.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/system_param.h>
@@ -43,6 +45,7 @@ static float toast_age;
 // --- shared services --------------------------------------------------------------
 
 void app_toast(const char *text) {
+	log_write("notice: %s", text);
 	if (toast_count == MAX_TOASTS) { // drop the oldest
 		memmove(toasts[0], toasts[1], sizeof(toasts[0]) * (MAX_TOASTS - 1));
 		toast_count--;
@@ -79,6 +82,13 @@ static void library_done(void *ctx) {
 	free(ctx);
 	g_library_generation++;
 	g_library_loading = 0;
+	int local = 0;
+	for (int i = 0; i < g_library.count; i++)
+		local += !g_library.items[i].registered;
+	if (g_library.db_ok)
+		log_write("library: %d themes (%d not added)", g_library.count, local);
+	else
+		log_write("library: %d theme folders; theme list unreadable: %s", g_library.count, g_library.db_error);
 	if (library_refresh_queued) {
 		library_refresh_queued = 0;
 		app_refresh_library();
@@ -269,6 +279,8 @@ static void draw_toast(void) {
 	ui_text(FONT_BODY, x + 20.0f, y + 26.0f, ui_alpha(C_TEXT, a), text);
 }
 
+static const char *const tab_names[TAB_COUNT] = {"Discover", "Library", "Assets", "Settings"};
+
 static void update_tabs(const Input *in) {
 	if (in->repeat & SCE_CTRL_LTRIGGER)
 		tab = (Tab)((tab + TAB_COUNT - 1) % TAB_COUNT);
@@ -323,10 +335,8 @@ static void draw_splash(void) {
 	a = a * a * (3.0f - 2.0f * a); // smoothstep
 	ui_rect(0, 0, SCREEN_W, SCREEN_H, ui_alpha(C_BG, a));
 	ImageRef art = images_file("app0:assets/splash.jpg");
-	if (art.tex) {
+	if (art.tex)
 		ui_image(art.tex, 0, 0, SCREEN_W, SCREEN_H, 0, 0, 0, 0, ui_alpha(0xFFFFFFFF, a * art.alpha));
-		ui_text_center(FONT_SMALL, 247.0f, 300.0f, ui_alpha(C_TEXT2, a * art.alpha), "by " APP_AUTHOR);
-	}
 	if (!splash_leaving && splash_age >= SPLASH_MIN)
 		ui_spinner(SCREEN_W - 36.0f, SCREEN_H - 36.0f, 9.0f, ui_alpha(C_TEXT2, a));
 }
@@ -355,6 +365,23 @@ static void save_autopilot_shot(void) {
 	free(copy);
 }
 #endif
+
+// The first lines of every session: enough to know what someone was running.
+static void log_session(void) {
+	SceKernelSystemSwVersion fw;
+	memset(&fw, 0, sizeof(fw));
+	fw.size = sizeof(fw);
+	if (sceKernelGetSystemSwVersion(&fw) < 0 || !fw.versionString[0])
+		snprintf(fw.versionString, sizeof(fw.versionString), "unknown");
+	char space[24] = "unknown";
+	int64_t free_bytes = fs_free_space("ux0:");
+	if (free_bytes >= 0)
+		fs_format_size(space, sizeof(space), free_bytes);
+	log_write("Imago %s on firmware %s, %s; ux0: %s free; unsafe homebrew %s; installing to %scustomtheme",
+	          APP_VERSION, fw.versionString,
+	          sceKernelGetModelForCDialog() == SCE_KERNEL_MODEL_VITATV ? "PS TV" : "PS Vita", space,
+	          g_db_writable ? "on" : "off", config_partition_device(g_config.partition));
+}
 
 // --- main -------------------------------------------------------------------------
 
@@ -393,6 +420,7 @@ int main(void) {
 	tasks_init();
 	music_init();
 	g_db_writable = themedb_writable();
+	log_session();
 	app_refresh_library();
 	discover_init();
 
@@ -421,6 +449,8 @@ int main(void) {
 				update_tabs(&routed);
 			if (before == TAB_ASSETS && tab != TAB_ASSETS)
 				assets_screen_leave();
+			if (tab != before)
+				log_write("tab: %s", tab_names[tab]);
 			switch (tab) {
 			case TAB_DISCOVER: discover_update(&routed); break;
 			case TAB_LIBRARY: library_screen_update(&routed); break;

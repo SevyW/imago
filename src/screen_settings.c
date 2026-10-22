@@ -5,6 +5,7 @@
 #include "fs.h"
 #include "images.h"
 #include "jobs.h"
+#include "log.h"
 #include "themedb.h"
 
 #include <math.h>
@@ -16,11 +17,11 @@
 #include <time.h>
 
 #define LIST_TOP (HEADER_H + 20.0f)
-#define ROW_H 62.0f
-#define ROW_GAP 8.0f
+#define ROW_H 54.0f
+#define ROW_GAP 6.0f
 #define MAX_BACKUPS (1 + BACKUP_AUTO_COUNT)
 
-enum { ITEM_PARTITION, ITEM_BACKUP, ITEM_RESTORE, ITEM_CACHE, ITEM_RESTART, ITEM_ABOUT, ITEM_COUNT };
+enum { ITEM_PARTITION, ITEM_BACKUP, ITEM_RESTORE, ITEM_CACHE, ITEM_RESTART, ITEM_REPORT, ITEM_ABOUT, ITEM_COUNT };
 
 static int selected;
 static long long cache_size = -1;
@@ -165,6 +166,14 @@ static void activate(int item) {
 		dialog_confirm("Restart PS Vita?", "Use this if a newly installed theme doesn't show up in Settings.",
 		               "Restart", 0, on_restart);
 		break;
+	case ITEM_REPORT:
+		log_write("report: the user opened Report a problem");
+		dialog_message("Report a problem",
+		               "Open an issue at github.com/SevyW/imago/issues and say what you were doing when it went "
+		               "wrong.\n\nPlease attach Imago's log: copy " LOG_PATH " (and " LOG_PREVIOUS_PATH
+		               " if it's there) to your PC with VitaShell, over USB or FTP. It lists what Imago did, never "
+		               "anything personal.");
+		break;
 	case ITEM_ABOUT:
 		dialog_message("Imago " APP_VERSION,
 		               "Created by " APP_AUTHOR ". github.com/SevyW/imago\n\n"
@@ -198,7 +207,7 @@ void settings_update(const Input *in) {
 void settings_draw(void) {
 	static const char *const titles[ITEM_COUNT] = {
 		"Install location", "Back up theme database", "Restore theme database",
-		"Clear image cache", "Restart PS Vita", "About Imago",
+		"Clear image cache", "Restart PS Vita", "Report a problem", "About Imago",
 	};
 	char values[ITEM_COUNT][64] = {{0}};
 	snprintf(values[ITEM_PARTITION], 64, "%scustomtheme", config_partition_device(g_config.partition));
@@ -209,6 +218,7 @@ void settings_draw(void) {
 	else
 		fs_format_size(values[ITEM_CACHE], 64, cache_size);
 	snprintf(values[ITEM_RESTART], 64, "Reload the system theme list");
+	snprintf(values[ITEM_REPORT], 64, "How to send us the log");
 	snprintf(values[ITEM_ABOUT], 64, "Version " APP_VERSION " \xC2\xB7 by " APP_AUTHOR);
 
 	for (int i = 0; i < ITEM_COUNT; i++) {
@@ -216,16 +226,17 @@ void settings_draw(void) {
 		float y = LIST_TOP + (float)i * (ROW_H + ROW_GAP);
 		int focused = i == selected;
 		ui_rrect(x, y, w, ROW_H, 14.0f, focused ? C_SURFACE2 : C_SURFACE);
-		ui_text(FONT_BOLD, x + 20.0f, y + 27.0f, C_TEXT, titles[i]);
-		ui_text(FONT_SMALL, x + 20.0f, y + 47.0f, C_TEXT3, i == ITEM_PARTITION ? "Where new themes are saved" : values[i]);
+		ui_text(FONT_BOLD, x + 20.0f, y + 23.0f, C_TEXT, titles[i]);
+		ui_text(FONT_SMALL, x + 20.0f, y + 42.0f, C_TEXT3, i == ITEM_PARTITION ? "Where new themes are saved" : values[i]);
 		if (i == ITEM_PARTITION) {
 			float right = x + w - 20.0f;
 			int vw = ui_text_width(FONT_BOLD, values[i]);
-			ui_text(FONT_BOLD, right - (float)vw - 22.0f, y + 37.0f, C_ACCENT, values[i]);
-			ui_line(right - 12.0f, y + 26.0f, right - 6.0f, y + 31.0f, 2.0f, C_TEXT3);
-			ui_line(right - 6.0f, y + 31.0f, right - 12.0f, y + 36.0f, 2.0f, C_TEXT3);
-			ui_line(right - (float)vw - 32.0f, y + 26.0f, right - (float)vw - 38.0f, y + 31.0f, 2.0f, C_TEXT3);
-			ui_line(right - (float)vw - 38.0f, y + 31.0f, right - (float)vw - 32.0f, y + 36.0f, 2.0f, C_TEXT3);
+			float mid = y + ROW_H * 0.5f;
+			ui_text(FONT_BOLD, right - (float)vw - 22.0f, mid + 6.0f, C_ACCENT, values[i]);
+			ui_line(right - 12.0f, mid - 5.0f, right - 6.0f, mid, 2.0f, C_TEXT3);
+			ui_line(right - 6.0f, mid, right - 12.0f, mid + 5.0f, 2.0f, C_TEXT3);
+			ui_line(right - (float)vw - 32.0f, mid - 5.0f, right - (float)vw - 38.0f, mid, 2.0f, C_TEXT3);
+			ui_line(right - (float)vw - 38.0f, mid, right - (float)vw - 32.0f, mid + 5.0f, 2.0f, C_TEXT3);
 		}
 		if (focused)
 			ui_rrect_outline(x - 4.0f, y - 4.0f, w + 8.0f, ROW_H + 8.0f, 18.0f, 2.5f,

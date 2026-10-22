@@ -288,7 +288,15 @@ zig cc -std=c11 -DFOLDERS_FILE='"scratch/folders.txt"' -o test_folders tests/tes
   src/fs.c && ./test_folders
 ```
 
-If something goes wrong on a console, `ux0:data/Imago/log.txt` has the details.
+
+## 🐞 Something not working?
+
+Please [open an issue](https://github.com/SevyW/imago/issues/new?template=bug_report.yml) and attach Imago's log, which is what makes a problem fixable:
+
+1. In VitaShell, copy `ux0:data/Imago/log.txt` to your PC (over USB, or FTP from VitaShell's START menu). If there's also a `log-previous.txt`, take that too.
+2. Say what you were doing when it happened, and drag the files into the issue.
+
+The log lists what Imago did (the screens you visited, installs and saves with their results, any errors), with your Imago version and firmware at the top. It never contains anything personal. *Settings › Report a problem* in the app shows the same steps.
 
 ## ☕ Support
 
