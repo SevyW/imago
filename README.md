@@ -6,6 +6,8 @@
 
 Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap one, and it's installed in the background while you keep scrolling. Imago is a fast, modern take on Red Squirrel's *Custom Themes Manager*: a fresh coat of paint, a much lighter network footprint, and a lot of care around the system theme database.
 
+And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, LiveArea background and start gate, with your own pictures or artwork found online.
+
 ![Platform](https://img.shields.io/badge/platform-PS%20Vita-003791?logo=playstation&logoColor=white)
 ![Firmware](https://img.shields.io/badge/needs-HENkaku%20%7C%20h--encore%20%7C%20Ens%C5%8D-584840)
 ![Language](https://img.shields.io/badge/code-C11-a8b9cc?logo=c&logoColor=white)
@@ -32,6 +34,21 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
 
 </div>
 
+## 🆕 New in 1.3
+
+**🫧 Restyle your apps.** A new **Apps** tab changes any app's bubble icon, LiveArea background and start gate. Frame a picture with a live preview of the home screen or LiveArea, and Imago converts it to the format the Vita needs. The original artwork is backed up first, and one press puts it back. [More below](#-restyle-your-apps).
+
+**🌐 Artwork from the web.** Search six sites from any app's page: VitaDB and the PlayStation Store need no key; SteamGridDB, IGDB, TheGamesDB and RAWG take your own free key, typed or **scanned from a QR code** with the camera. [Setting up keys](#-online-artwork).
+
+**🔧 Fixed** (these affected 1.2.0 on real consoles):
+
+- **Theme names in the Library** showed only their first letter on consoles where the system keeps theme names in a different text format (UTF-16). Imago now reads both.
+- **Theme wallpapers in Photos:**
+  - Pictures were named after their first letter (`M.png`). They're now named in full, like *My theme · page 6*.
+  - *Turn off and delete them from Photos* deleted nothing, then forgot about the pictures. It now deletes them, and keeps track of any it can't delete.
+  - Taking screenshots stopped working after Imago added pictures, until Imago was closed.
+- **Your pictures** didn't show up in the Pictures shelf or the picture browser for about half a minute after taking or deleting a screenshot. They're now found straight away, and grouped as *Photos*, *Screenshots* and *Camera* instead of by the Vita's internal folder codes.
+
 ## 🎬 See it work
 
 <p align="center">
@@ -56,7 +73,8 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
 | 📚 **Asset library** | The **Assets** tab shows every wallpaper, icon set, song and lock screen across your installed themes. Preview them full screen, play the music right on the Vita, pick the parts you like (wallpapers from several themes, one page at a time), and press △ to turn them into a brand-new theme. |
 | 🧪 **Mix themes** | In Theme Studio, press △ on any part (wallpapers, music, icons, lock screen, status bar) to take it from another installed theme. Every author whose parts you use is credited in the new theme. |
 | 📸 **Your own pictures** | Screenshots, photos and any JPEG or PNG on your memory card can become wallpapers or the lock screen: from the **Pictures** shelf in Assets, or **Your pictures** in Theme Studio. Imago resizes them to the Vita's 960×512 and saves them in the 8-bit format themes use. |
-| 🫧 **Restyle your apps** | The **Apps** tab changes any app's bubble icon, LiveArea background and start gate, from your own pictures or [artwork found online](#-online-artwork). The original artwork is backed up first, and one press puts it back. |
+| 🫧 **Restyle your apps** | The **Apps** tab changes any app's bubble icon, LiveArea background and start gate, from your own pictures or [artwork found online](#-online-artwork). Frame the picture with a live preview; a matching start gate can be cut from the background. The original artwork is backed up first, and one press puts it back. |
+| 🌐 **Artwork from the web** | VitaDB, the PlayStation Store, SteamGridDB, IGDB, TheGamesDB and RAWG, searched from the app's page. Keys are typed or scanned from a QR code with the camera. |
 | 💾 **Careful with the system** | Backs up the system theme list before changing it, checks it for damage first, and never deletes anything outside a `customtheme` folder. More below. |
 | 🏞️ **Theme wallpapers in Photos** | Optional (*Settings › Theme wallpapers in Photos*): adds the wallpapers and lock screens of your installed themes to the Photos app, so you can pick them in the system's own page-wallpaper picker. Handy with plugins like [livearea_nolimits](https://github.com/devnoname120/livearea_nolimits), where themes only reach the first 10 home-screen pages. The first time can take a while with a large theme collection; after that only new themes are added. Turning it off can delete exactly the pictures Imago added. |
 | 📂 **Install anywhere** | `ux0:`, `ur0:` or `uma0:`, using the same `customtheme` folders as Custom Themes Manager, so themes from either app show up in both. |
@@ -95,9 +113,21 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
     <td><img src="docs/images/pictures.png" alt="The Pictures shelf in Assets, with a picture picked as a wallpaper and one as the lock screen"><br><sub><b>Your pictures</b>: screenshots and photos as wallpapers or the lock screen</sub></td>
     <td><img src="docs/images/picture_picker.png" alt="Choosing pictures in Theme Studio, one folder at a time"><br><sub><b>Picture browser</b>: add pictures to any theme in Theme Studio</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/images/apps.png" alt="The Apps tab: every installed app as a bubble, one marked Custom"><br><sub><b>Apps</b>: every app, with the ones you restyled marked <b>CUSTOM</b></sub></td>
+    <td><img src="docs/images/app_detail.png" alt="An app's page: its bubble, the parts that can change, and its LiveArea"><br><sub><b>An app</b>: bubble icon, LiveArea background and start gate</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/online_icons.png" alt="Bubble icons found on SteamGridDB"><br><sub><b>Search online</b>: bubble icons from SteamGridDB</sub></td>
+    <td><img src="docs/images/online_wide.png" alt="Wide banners found on SteamGridDB for a LiveArea background"><br><sub>…and wide pictures for the LiveArea background</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/app_editor.png" alt="Framing an official PlayStation Store icon, with a preview of the home screen"><br><sub><b>Editor</b>: frame the picture, previewed on the home screen</sub></td>
+    <td><img src="docs/images/sources.png" alt="Settings: the artwork sources and whether each is set up"><br><sub><b>Artwork sources</b>: add keys by typing or with a QR code</sub></td>
+  </tr>
 </table>
 
-<sub>All screenshots are from the Vita3K emulator. The <b>UPDATE</b> and <b>NOT ADDED</b> states were set up by hand for the pictures; everything else is the app as it runs.</sub>
+<sub>The theme screenshots are from the Vita3K emulator; the <b>UPDATE</b> and <b>NOT ADDED</b> states were set up by hand for the pictures. The Apps screenshots are from a real PS Vita. Everything else is the app as it runs.</sub>
 
 ## ⚡ Why it's fast
 
@@ -162,13 +192,25 @@ Each release's notes list what changed, what to test, and how to recover if some
 
 **Assets tab:** ✕ pick (on a picture: use it as a wallpaper or the lock screen) · □ preview (play / stop for music) · △ create a theme from the picks · SELECT clear the picks. **Theme Studio:** ✕ change · △ take this part from another theme or from your pictures · ○ back. **Choosing pictures:** L / R switch folders · ✕ pick · □ preview · △ use the picked pictures.
 
+**Apps tab:** ✕ open an app, then ✕ on a part: *From the memory card*, *Search online* or *Back to the original*. **Search online:** L / R switch sites · △ change what's searched · ✕ use the picture. **Editor:** stick or drag to move · R / L zoom · □ whole picture · △ seamless start gate (backgrounds) · SELECT reset · ✕ apply.
+
 **Where Imago finds pictures:** everything in the Photos app's folder (`ux0:picture`, where screenshots go) and in `ux0:data/Imago/pictures`, which Imago creates for pictures you copy from a PC with VitaShell.
 
 On Japanese consoles ✕ and ○ are swapped, as the system does. Touch works everywhere: tap to open, drag to scroll.
 
-## 🌐 Online artwork
+## 🫧 Restyle your apps
 
-In the **Apps** tab, choose a part of an app (bubble icon, LiveArea background or start gate), then **Search online**. Pick a picture and Imago downloads it and opens it in the editor, which frames it and converts it to the Vita's format.
+Every app has three pictures the system shows: its **bubble icon** on the home screen, and the **background** and **start gate** of its LiveArea. The **Apps** tab changes any of them, for games and homebrew alike.
+
+1. Open an app, choose a part, then **From the memory card** or **Search online**.
+2. Frame the picture in the editor. Bubble icons are previewed among your other bubbles; backgrounds are previewed as the LiveArea, and the start gate can be cut from the same picture so the two line up seamlessly.
+3. Press ✕. Imago scales the picture to the exact size the app uses, reduces it to the 256 colours the system expects, and puts it in place. LiveArea changes show straight away; a new bubble icon shows after a restart (Imago offers one).
+
+The original artwork is backed up before the first change, and *Restore the original look* puts it back (see *Built to keep your Vita safe* below). After an app update, *needs reapplying* puts your look back in one press.
+
+### 🌐 Online artwork
+
+Choose a part of an app, then **Search online**. The search starts with the app's name (△ changes it), and each site has its own tab. Pick a picture and Imago downloads it and opens it in the editor.
 
 | Source | What it has | Key |
 |---|---|---|
@@ -179,9 +221,16 @@ In the **Apps** tab, choose a part of an app (bubble icon, LiveArea background o
 | [TheGamesDB](https://thegamesdb.net) | Box art, fanart, banners, screenshots | Free: make an account and [request a key](https://api.thegamesdb.net/key.php). Searches use part of a monthly allowance |
 | [RAWG](https://rawg.io) | Backgrounds and screenshots | Free for personal use: [Get API Key](https://rawg.io/apidocs) |
 
-**Adding a key:** *Settings › Apps: artwork sources*, choose the site, then **Type the key** or **Scan a QR code**. The scanner uses the back camera; press □ to switch to the front one. Imago tests the connection right away, and **Test the connection** checks it again any time. Keys stay on your memory card in `ux0:data/Imago/keys.txt` and never appear in the log.
+> [!NOTE]
+> VitaDB, the PlayStation Store and SteamGridDB are tested on a real PS Vita. **IGDB, TheGamesDB and RAWG are written to their documentation but haven't been tried with real keys yet.** If you use one, please [tell us how it went](https://github.com/SevyW/imago/issues). The PlayStation Store's search isn't a public API, so it may stop working one day.
 
-**Making the QR code:** a QR code saves typing a long key on the Vita. We recommend [inyourbrowser.com's text-to-QR generator](https://www.inyourbrowser.com/qr-code-generator/text-to-qr): it makes the code inside your browser, without sending what you type to a server. Avoid generators that make the code on their server, since they see your key. Put either the bare key in the code, or one `name=value` per line to set up several sites in one scan:
+#### Adding a key
+
+In *Settings › Apps: artwork sources*, choose the site, then **Type the key** or **Scan a QR code**. The scanner uses the back camera; press □ to switch to the front one. Imago tests the connection right away, and **Test the connection** checks it again any time. Keys stay on your memory card in `ux0:data/Imago/keys.txt` and never appear in the log.
+
+#### Making a QR code
+
+A QR code saves typing a long key on the Vita. We recommend [inyourbrowser.com's text-to-QR generator](https://www.inyourbrowser.com/qr-code-generator/text-to-qr): it makes the code inside your browser, without sending what you type to a server. Avoid generators that make the code on their server, since they see your key. Put either the bare key in the code, or one `name=value` per line to set up several sites in one scan:
 
 ```
 steamgriddb=YOUR_STEAMGRIDDB_KEY
@@ -203,6 +252,14 @@ Changing `app.db` is the one risky thing a theme manager does. Imago treats it t
 - **Untrusted downloads are bounded.** Paths are sanitised, archives can't inflate past their declared size, downloads are size-capped, and free space is checked against the real unpacked size first.
 - **One short transaction per change.** Writes use bound parameters (titles with apostrophes are fine) and adapt to the firmware's table layout instead of assuming it.
 
+The Apps tab changes the system's copy of each app's artwork (`ur0:appmeta`), so it's just as careful:
+
+- **The original comes first.** Before an app's first change, its whole artwork folder is copied to `ux0:data/Imago/apps/<TITLEID>/original`, with a checksum of every file. Your pictures are saved next to it.
+- **Only that app's own artwork folder is written**, and every new file is copied next to the old one, checked, then swapped in by renaming, with the old file put back if the swap fails.
+- **App updates are expected.** If an update or a database rebuild replaces your artwork, the app shows *needs reapplying*; reapplying keeps the older originals in `history/` and backs up the new ones before putting your look back.
+- **One press undoes it.** *Restore the original look* (per app, or every app from Settings) puts the original files back; the backups stay on the memory card.
+- **Keys stay private.** API keys live only in `ux0:data/Imago/keys.txt`, and they never appear in the log or the address of a logged download.
+
 ## ⚙️ How it works
 
 ```mermaid
@@ -213,6 +270,8 @@ flowchart LR
   I -- "one SQLite transaction,<br/>after a backup" --> D[("ur0:shell/db/app.db<br/>tbl_theme")]
   F --> S["Settings › Theme & Background"]
   D --> S
+  A["Artwork sites<br/>VitaDB · PS Store · SteamGridDB<br/>IGDB · TheGamesDB · RAWG"] --> I
+  I -- "backed up, then<br/>swapped in" --> M["ur0:appmeta/&lt;app&gt;<br/>bubble · LiveArea"]
 ```
 
 - **No API, just HTML.** psvt.ovh has no API, so Imago reads its list pages (20-odd themes each) and stops reading a theme's page as soon as the details have arrived.
@@ -268,8 +327,8 @@ flowchart LR
 
 | Path | What's in it |
 |---|---|
-| [`src/`](src/) | The app (C). `psvt.c` reads the site, `tasks.c` installs and builds themes, `themedb.c` handles the system theme list, `unzip.c` extracts, `themedoc.c` reads and rewrites `theme.xml`, `assets.c` indexes the asset library, `pictures.c` finds your pictures and `imageio.c` turns them into theme images, `folders.c` keeps your Library folders, `music.c` plays ATRAC9 music, and `ui.c` plus the `screen_*.c` files draw the interface. |
-| [`tests/`](tests/) | Unit tests that run on a PC: site parsing, zip extraction, theme files and the database layer. |
+| [`src/`](src/) | The app (C). `psvt.c` reads the site, `tasks.c` installs and builds themes, `themedb.c` handles the system theme list, `unzip.c` extracts, `themedoc.c` reads and rewrites `theme.xml`, `assets.c` indexes the asset library, `pictures.c` finds your pictures and `imageio.c` turns them into theme images, `folders.c` keeps your Library folders, `music.c` plays ATRAC9 music, and `ui.c` plus the `screen_*.c` files draw the interface. For apps: `appdb.c` and `apps.c` list them, `store.c` backs up and rewrites their artwork, `edit.c` and `quant.c` turn pictures into their images, `artwork.c` searches the artwork sites, `keys.c` keeps the API keys and `qrscan.c` reads QR codes. |
+| [`tests/`](tests/) | Unit tests that run on a PC: site parsing, zip extraction, theme files, the database layer, and the Apps tab's backups and image conversion. |
 | [`assets/brand/`](assets/brand/) | The source artwork by Sevy: the ghost icon and the IMAGO key art. |
 | [`tools/`](tools/) | Scripts that generate the app's artwork from `assets/brand/` and this README's hero image (from a public-domain PS Vita photo in `tools/assets/`). |
 | [`assets/`](assets/) | The Inter typeface (SIL Open Font License). |
@@ -300,17 +359,25 @@ The parts that can hurt a console are tested on a PC with any C11 compiler (thes
 | `tests/test_install.c` | Extracting a real 6.7 MB theme and a nested zip; CRC checks; progress and cancel; skipping `../` and macOS junk; `theme.xml`; folder-name and path validation |
 | `tests/test_themedoc.c` | Reading, editing and rebuilding 16 real themes from four different theme tools; toggling music, icons and pages; mixing every part between themes; building a theme from single pages of several themes; lock screen images; themes made from pictures, and pictures mixed into a theme (960×512 and 360×192 8-bit PNGs, odd file names, a file that isn't a picture); regenerated previews; dropping dangling icons; refusing `../` file references; parsing every theme's ATRAC9 music |
 | `tests/test_folders.c` | Creating, renaming and deleting folders; unique names; moving themes in and out; surviving a reload; the 32-folder limit; a damaged folders file |
-| `tests/test_themedb.c` | Writing `tbl_theme` on a mock schema; localized columns; apostrophes; trailing-slash ids; the live-journal guard; backup and restore round trip; refusing a damaged backup without touching `app.db` |
+| `tests/test_themedb.c` | Writing `tbl_theme` on a mock schema; localized columns; apostrophes; trailing-slash ids; names stored as UTF-16 by the system (accents, symbols, emoji); the live-journal guard; backup and restore round trip; refusing a damaged backup without touching `app.db` |
+| `tests/test_core.c` | Reading LiveArea templates and `param.sfo`; reducing pictures to 256 colours |
+| `tests/test_store.c` | Backing up an app's artwork, applying, noticing replaced files, reapplying after an update (older originals kept), and restoring, on a mock `ur0:appmeta` |
 
 ```sh
 zig cc -std=c11 -o test_psvt tests/test_psvt.c src/psvt.c && ./test_psvt list.html theme.html
 zig cc -std=c11 -I<zlib> -o test_install tests/test_install.c src/unzip.c src/fs.c src/theme.c src/psvt.c \
   <zlib>/{adler32,crc32,inflate,inftrees,inffast,zutil}.c && ./test_install theme.zip nested.zip scratch/
 zig cc -std=c11 -DAPP_DB_PATH='"scratch/app.db"' -Ithird_party/sqlite -o test_themedb tests/test_themedb.c \
-  src/themedb.c src/fs.c src/theme.c src/psvt.c third_party/sqlite/sqlite3.c && ./test_themedb
+  src/themedb.c src/dbtext.c src/fs.c src/theme.c src/psvt.c third_party/sqlite/sqlite3.c && ./test_themedb
 zig cc -std=c11 -I<libpng> -I<zlib> -o test_themedoc tests/test_themedoc.c tests/jpeg_stub.c src/themedoc.c \
   src/xmltree.c src/imageio.c src/fs.c src/theme.c src/psvt.c src/at9.c src/unzip.c <libpng and zlib sources> \
   && ./test_themedoc scratch/ theme1.zip theme2.zip theme3.zip
+zig cc -std=c11 -I<libpng> -I<zlib> -o test_core tests/test_core.c src/livearea.c src/quant.c src/sfo.c \
+  src/xmltree.c src/fs.c src/psvt.c <libpng and zlib sources> && ./test_core
+zig cc -std=c11 -I<libpng> -I<zlib> -Ithird_party/sqlite -DAPPMETA_DIR='"scratch/appmeta"' -DDATA_DIR='"scratch/data"' \
+  -DAPP_DB_PATH='"scratch/store.db"' -o test_store tests/test_store.c src/store.c src/appdb.c src/dbtext.c \
+  src/livearea.c src/sfo.c src/xmltree.c src/fs.c src/imageio.c tests/jpeg_stub.c src/quant.c src/psvt.c \
+  third_party/sqlite/sqlite3.c <libpng and zlib sources> && ./test_store
 zig cc -std=c11 -DFOLDERS_FILE='"scratch/folders.txt"' -o test_folders tests/test_folders.c src/folders.c \
   src/fs.c && ./test_folders
 ```
@@ -331,7 +398,7 @@ Imago is free and always will be. If it made your Vita a little more yours, you 
 
 ## 🙏 Credits
 
-- **Imago**, the ghost and the IMAGO key art: created by [Sevy (@SevyW)](https://github.com/SevyW).
+- **Imago**, the ghost and the IMAGO key art: created by [Sevy (@SevyW)](https://github.com/SevyW). The Apps tab began as *Pictura*, Sevy's app-artwork editor, merged into Imago in 1.3.
 - **Themes and the repository:** [psvt.ovh](https://psvt.ovh) by Red Squirrel, who also wrote Custom Themes Manager. The site runs on donations, so please consider [supporting it](https://gofund.me/e8f1d6c4).
 - **[Inter](https://rsms.me/inter/)** typeface by Rasmus Andersson (SIL Open Font License).
 - **[SQLite](https://sqlite.org)**, **[libvita2d](https://github.com/xerpi/libvita2d)**, **[curl](https://curl.se)**, **zlib**, **libpng** and **libjpeg-turbo**, via [VitaSDK](https://vitasdk.org).
