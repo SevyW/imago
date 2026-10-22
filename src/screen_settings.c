@@ -26,6 +26,9 @@
 enum {
 	ITEM_PARTITION,
 	ITEM_PHOTOS,
+	ITEM_APPS_SYSTEM,
+	ITEM_APPS_REAPPLY,
+	ITEM_APPS_RESTORE,
 	ITEM_BACKUP,
 	ITEM_RESTORE,
 	ITEM_CACHE,
@@ -261,6 +264,26 @@ static void activate(int item) {
 	case ITEM_PHOTOS:
 		toggle_photos();
 		break;
+	case ITEM_APPS_SYSTEM:
+		g_config.show_system = !g_config.show_system;
+		config_save();
+		break;
+	case ITEM_APPS_REAPPLY:
+		if (app_require_unsafe())
+			break;
+		if (g_apps_generation == 0)
+			app_toast("Open the Apps tab once first, so Imago knows your apps");
+		else
+			apps_reapply_all();
+		break;
+	case ITEM_APPS_RESTORE:
+		if (app_require_unsafe())
+			break;
+		if (g_apps_generation == 0)
+			app_toast("Open the Apps tab once first, so Imago knows your apps");
+		else
+			apps_restore_all();
+		break;
 	case ITEM_BACKUP:
 		fs_mkdir_p(BACKUP_DIR);
 		if (themedb_backup(BACKUP_MANUAL, err) == 0)
@@ -343,7 +366,8 @@ void settings_update(const Input *in) {
 
 void settings_draw(void) {
 	static const char *const titles[ITEM_COUNT] = {
-		"Install location", "Theme wallpapers in Photos", "Back up theme database", "Restore theme database",
+		"Install location", "Theme wallpapers in Photos", "Apps: show system apps", "Apps: put custom looks back",
+		"Apps: restore every original look", "Back up theme database", "Restore theme database",
 		"Clear image cache", "Restart PS Vita", "Report a problem", "About Imago",
 	};
 	char values[ITEM_COUNT][64] = {{0}};
@@ -357,6 +381,9 @@ void settings_draw(void) {
 		         photos_count == 1 ? "" : "s");
 	else
 		snprintf(values[ITEM_PHOTOS], 64, "Use them as wallpapers on any home-screen page");
+	snprintf(values[ITEM_APPS_SYSTEM], 64, "Settings, Music and the other built-in apps");
+	snprintf(values[ITEM_APPS_REAPPLY], 64, "After an app update or a database rebuild");
+	snprintf(values[ITEM_APPS_RESTORE], 64, "Undo every change made in the Apps tab");
 	snprintf(values[ITEM_BACKUP], 64, "Saved to %s", BACKUP_MANUAL);
 	snprintf(values[ITEM_RESTORE], 64, "Choose a manual or automatic backup");
 	if (cache_busy || cache_size < 0)
@@ -388,9 +415,9 @@ void settings_draw(void) {
 			ui_line(right - (float)vw - 32.0f, mid - 5.0f, right - (float)vw - 38.0f, mid, 2.0f, C_TEXT3);
 			ui_line(right - (float)vw - 38.0f, mid, right - (float)vw - 32.0f, mid + 5.0f, 2.0f, C_TEXT3);
 		}
-		if (i == ITEM_PHOTOS) { // an on/off switch
+		if (i == ITEM_PHOTOS || i == ITEM_APPS_SYSTEM) { // an on/off switch
 			float sw = 44.0f, sh = 24.0f, sx = x + w - 20.0f - sw, cy = y + ROW_H * 0.5f;
-			int on = g_config.share_photos;
+			int on = i == ITEM_PHOTOS ? g_config.share_photos : g_config.show_system;
 			ui_rrect(sx, cy - sh * 0.5f, sw, sh, sh * 0.5f, on ? C_ACCENT : C_SURFACE3);
 			vita2d_draw_fill_circle(on ? sx + sw - sh * 0.5f : sx + sh * 0.5f, cy, 9.0f, C_TEXT);
 		}
@@ -401,6 +428,6 @@ void settings_draw(void) {
 
 	vita2d_disable_clipping();
 
-	Hint hints[] = {{ui_ok_glyph(), selected == ITEM_PARTITION ? "Change" : selected == ITEM_PHOTOS ? "On / off" : "Select"}};
+	Hint hints[] = {{ui_ok_glyph(), selected == ITEM_PARTITION ? "Change" : selected == ITEM_PHOTOS || selected == ITEM_APPS_SYSTEM ? "On / off" : "Select"}};
 	app_footer(hints, 1, NULL);
 }

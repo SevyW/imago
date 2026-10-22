@@ -9,13 +9,15 @@ typedef struct {
 	uint32_t pressed; // went down this frame
 	uint32_t repeat;  // pressed, plus auto-repeat for held d-pad/shoulder buttons
 	float lx, ly;     // left stick, -1..1 with a dead zone
+	float rx, ry;     // right stick
 
 	int touching;     // a finger is on the front screen
 	int touch_x, touch_y;
 	int tapped;       // a short press without movement ended this frame
 	int tap_x, tap_y;
 	int dragging;     // finger moved far enough to be a drag
-	float drag_dy;    // vertical movement this frame while dragging
+	float drag_dx;    // movement this frame while dragging
+	float drag_dy;
 } Input;
 
 // Confirm/back buttons follow the system setting (O/X swapped in Japan).

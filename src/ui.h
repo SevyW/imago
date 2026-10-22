@@ -61,6 +61,9 @@ void ui_shadow(float x, float y, float w, float h, float r, float strength);
 // (top-left, top-right, bottom-right, bottom-left).
 void ui_image(const vita2d_texture *tex, float x, float y, float w, float h, float r_tl, float r_tr,
               float r_br, float r_bl, uint32_t tint);
+// The same, showing only the texture region u0,v0..u1,v1 (0..1 of its size).
+void ui_image_part(const vita2d_texture *tex, float x, float y, float w, float h, float u0, float v0, float u1,
+                   float v1, float r_tl, float r_tr, float r_br, float r_bl, uint32_t tint);
 
 // Text. y is the baseline. Functions return the drawn width.
 int ui_font_size(Font font);

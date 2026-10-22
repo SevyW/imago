@@ -59,6 +59,16 @@ add_executable(${PROJECT_NAME}
   src/screen_library.c
   src/screen_settings.c
   src/screen_studio.c
+  src/screen_apps.c
+  src/screen_appdetail.c
+  src/screen_editor.c
+  src/store.c
+  src/appdb.c
+  src/apps.c
+  src/livearea.c
+  src/edit.c
+  src/quant.c
+  src/sfo.c
   src/tasks.c
   src/theme.c
   src/themedoc.c

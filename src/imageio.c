@@ -300,3 +300,111 @@ int image_save_png_indexed(const char *path, const uint8_t *rgba, int width, int
 	free(err);
 	return rc;
 }
+
+int image_png_size(const char *path, int *width, int *height) {
+	unsigned char h[24];
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return -1;
+	size_t n = fread(h, 1, sizeof(h), f);
+	fclose(f);
+	if (n != sizeof(h) || memcmp(h, "\x89PNG\r\n\x1a\n", 8) != 0 || memcmp(h + 12, "IHDR", 4) != 0)
+		return -1;
+	*width = h[16] << 24 | h[17] << 16 | h[18] << 8 | h[19];
+	*height = h[20] << 24 | h[21] << 16 | h[22] << 8 | h[23];
+	return *width > 0 && *height > 0 ? 0 : -1;
+}
+
+// A palette image from indices (one per pixel) and an RGBA palette. The
+// palette is padded to 256 entries so the file is always 8-bit.
+int image_save_png_palette(const char *path, const uint8_t *indices, int width, int height, const uint8_t *palette,
+                           int colors) {
+	uint8_t full[256 * 4];
+	memset(full, 0, sizeof(full));
+	memcpy(full, palette, (size_t)(colors < 256 ? colors : 256) * 4);
+	png_image image;
+	memset(&image, 0, sizeof(image));
+	image.version = PNG_IMAGE_VERSION;
+	image.width = (png_uint_32)width;
+	image.height = (png_uint_32)height;
+	image.format = PNG_FORMAT_RGBA_COLORMAP;
+	image.colormap_entries = 256;
+	int ok = png_image_write_to_file(&image, path, 0, indices, 0, full);
+	png_image_free(&image);
+	return ok ? 0 : -1;
+}
+
+static void sample_bilinear(const uint8_t *src, int sw, int sh, double fx, double fy, uint8_t *out) {
+	fx -= 0.5;
+	fy -= 0.5;
+	if (fx < 0)
+		fx = 0;
+	if (fy < 0)
+		fy = 0;
+	int x0 = (int)fx, y0 = (int)fy;
+	if (x0 > sw - 1)
+		x0 = sw - 1;
+	if (y0 > sh - 1)
+		y0 = sh - 1;
+	int x1 = x0 + 1 < sw ? x0 + 1 : sw - 1, y1 = y0 + 1 < sh ? y0 + 1 : sh - 1;
+	double tx = fx - x0, ty = fy - y0;
+	if (tx > 1.0)
+		tx = 1.0;
+	if (ty > 1.0)
+		ty = 1.0;
+	const uint8_t *a = src + ((size_t)y0 * sw + x0) * 4, *b = src + ((size_t)y0 * sw + x1) * 4;
+	const uint8_t *c = src + ((size_t)y1 * sw + x0) * 4, *d = src + ((size_t)y1 * sw + x1) * 4;
+	for (int k = 0; k < 4; k++) {
+		double top = a[k] + (b[k] - a[k]) * tx, bottom = c[k] + (d[k] - c[k]) * tx;
+		out[k] = (uint8_t)(top + (bottom - top) * ty + 0.5);
+	}
+}
+
+static void clamp_span(int *lo, int *hi, int limit) {
+	if (*lo < 0)
+		*lo = 0;
+	if (*hi > limit)
+		*hi = limit;
+	if (*lo > limit - 1)
+		*lo = limit - 1;
+	if (*hi <= *lo)
+		*hi = *lo + 1;
+}
+
+uint8_t *image_resize_region(const uint8_t *src, int sw, int sh, double rx, double ry, double rw, double rh, int dw,
+                             int dh) {
+	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 || rw <= 0 || rh <= 0)
+		return NULL;
+	uint8_t *out = malloc((size_t)dw * (size_t)dh * 4);
+	if (!out)
+		return NULL;
+	double step_x = rw / dw, step_y = rh / dh;
+	int enlarge = step_x < 1.0 || step_y < 1.0;
+	for (int y = 0; y < dh; y++) {
+		int y0 = (int)(ry + y * step_y), y1 = (int)(ry + (y + 1) * step_y);
+		clamp_span(&y0, &y1, sh);
+		for (int x = 0; x < dw; x++) {
+			uint8_t *o = out + ((size_t)y * dw + x) * 4;
+			if (enlarge) {
+				sample_bilinear(src, sw, sh, rx + (x + 0.5) * step_x, ry + (y + 0.5) * step_y, o);
+				continue;
+			}
+			int x0 = (int)(rx + x * step_x), x1 = (int)(rx + (x + 1) * step_x);
+			clamp_span(&x0, &x1, sw);
+			unsigned sum[4] = {0, 0, 0, 0}, n = 0;
+			for (int yy = y0; yy < y1; yy++) {
+				const uint8_t *row = src + ((size_t)yy * sw + x0) * 4;
+				for (int xx = x0; xx < x1; xx++, row += 4) {
+					sum[0] += row[0];
+					sum[1] += row[1];
+					sum[2] += row[2];
+					sum[3] += row[3];
+					n++;
+				}
+			}
+			for (int c = 0; c < 4; c++)
+				o[c] = (uint8_t)(n ? sum[c] / n : 0);
+		}
+	}
+	return out;
+}

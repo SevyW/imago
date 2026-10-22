@@ -94,7 +94,7 @@ unsigned input_autopilot_shot(void) {
 
 static uint32_t previous;
 static unsigned long long held_since, last_repeat;
-static int was_touching, start_x, start_y, last_y;
+static int was_touching, start_x, start_y, last_x, last_y;
 static unsigned long long touch_start;
 
 void input_init(void) {
@@ -141,25 +141,32 @@ void input_update(Input *in) {
 	previous = pad.buttons;
 	in->lx = axis(pad.lx);
 	in->ly = axis(pad.ly);
+	in->rx = axis(pad.rx);
+	in->ry = axis(pad.ry);
 
 	SceTouchData touch;
 	memset(&touch, 0, sizeof(touch));
 	sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1);
 	in->tapped = 0;
+	in->drag_dx = 0.0f;
 	in->drag_dy = 0.0f;
 	if (touch.reportNum > 0) {
 		int x = touch.report[0].x / 2, y = touch.report[0].y / 2; // 1920x1088 -> 960x544
 		if (!was_touching) {
 			start_x = x;
 			start_y = y;
+			last_x = x;
 			last_y = y;
 			touch_start = now;
 			in->dragging = 0;
 		}
 		if (!in->dragging && (abs(x - start_x) > DRAG_THRESHOLD || abs(y - start_y) > DRAG_THRESHOLD))
 			in->dragging = 1;
-		if (in->dragging)
+		if (in->dragging) {
+			in->drag_dx = (float)(x - last_x);
 			in->drag_dy = (float)(y - last_y);
+		}
+		last_x = x;
 		last_y = y;
 		in->touch_x = x;
 		in->touch_y = y;

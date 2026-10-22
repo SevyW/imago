@@ -396,6 +396,24 @@ ImageRef images_file(const char *path) {
 	return images_file_sized(path, 0);
 }
 
+void images_forget(const char *path) {
+	pthread_mutex_lock(&lock);
+	for (int i = 0; i < SLOTS; i++) {
+		Slot *s = &slots[i];
+		if (s->state == SLOT_FREE || s->url[0] || strcmp(s->path, path) != 0)
+			continue;
+		if (s->state == SLOT_LOADING) {
+			s->key[0] = '\0'; // orphaned: the worker's result is evicted later
+		} else if (!s->tex || to_free_count < SLOTS) {
+			if (s->tex)
+				to_free[to_free_count++] = s->tex;
+			free(s->pixels);
+			memset(s, 0, sizeof(*s));
+		}
+	}
+	pthread_mutex_unlock(&lock);
+}
+
 void images_clear_disk_cache(void) {
 	fs_rm_rf(CACHE_DIR);
 	fs_mkdir_p(CACHE_DIR);

@@ -10,6 +10,10 @@
 #include "log.h"
 #include "music.h"
 #include "net.h"
+#include "appdb.h"
+#include "livearea.h"
+#include "picture_picker.h"
+#include "store.h"
 #include "tasks.h"
 #include "themedb.h"
 
@@ -19,6 +23,8 @@
 #include <psp2/kernel/sysmem.h>
 #include <psp2/common_dialog.h>
 #include <psp2/kernel/processmgr.h>
+#include <psp2/power.h>
+#include <psp2/shellutil.h>
 #include <psp2/system_param.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +41,14 @@ static Tab tab = TAB_DISCOVER;
 static float tab_x, tab_w; // animated underline
 static float tab_label_x[TAB_COUNT], tab_label_w[TAB_COUNT];
 static int library_refresh_queued;
+
+AppList g_apps;
+int g_apps_loading;
+int g_apps_generation;
+static int apps_refresh_queued;
+
+static char busy_label[64];
+static int busy;
 
 #define TOAST_SECONDS 3.2f
 #define MAX_TOASTS 4
@@ -106,6 +120,148 @@ void app_refresh_library(void) {
 		return;
 	g_library_loading = 1;
 	jobs_submit(library_work, library_done, lib);
+}
+
+// --- the Apps tab's services ---------------------------------------------------------
+
+static void apps_work(void *ctx, NetClient *net) {
+	(void)net;
+	apps_scan((AppList *)ctx);
+}
+
+static void apps_done(void *ctx) {
+	apps_free(&g_apps);
+	g_apps = *(AppList *)ctx;
+	free(ctx);
+	g_apps_generation++;
+	g_apps_loading = 0;
+	log_write("apps: %d apps", g_apps.count);
+	if (apps_refresh_queued) {
+		apps_refresh_queued = 0;
+		app_refresh_apps();
+	}
+}
+
+void app_refresh_apps(void) {
+	if (g_apps_loading) {
+		apps_refresh_queued = 1;
+		return;
+	}
+	AppList *list = calloc(1, sizeof(*list));
+	if (!list)
+		return;
+	g_apps_loading = 1;
+	jobs_submit(apps_work, apps_done, list);
+}
+
+typedef struct {
+	JobWork work;
+	JobFn done;
+	void *ctx;
+} RunCtx;
+
+static void run_work(void *ctx, NetClient *net) {
+	RunCtx *r = ctx;
+	r->work(r->ctx, net);
+}
+
+static void run_done(void *ctx) {
+	RunCtx *r = ctx;
+	busy = 0;
+	sceShellUtilUnlock(SCE_SHELL_UTIL_LOCK_TYPE_PS_BTN);
+	if (r->done)
+		r->done(r->ctx);
+	free(r);
+}
+
+void app_run(const char *label, JobWork work, JobFn done, void *ctx) {
+	RunCtx *r = malloc(sizeof(*r));
+	if (!r) {
+		if (done)
+			done(ctx);
+		return;
+	}
+	*r = (RunCtx){work, done, ctx};
+	snprintf(busy_label, sizeof(busy_label), "%s", label);
+	busy = 1;
+	log_write("apps: %s", label);
+	// Leaving mid-write could leave an app's artwork half replaced.
+	sceShellUtilLock(SCE_SHELL_UTIL_LOCK_TYPE_PS_BTN);
+	jobs_submit(run_work, run_done, r);
+}
+
+int app_busy(void) {
+	return busy;
+}
+
+void app_forget_artwork(const char *id) {
+	char path[512];
+	store_appmeta_path(id, "icon0.png", path, sizeof(path));
+	images_forget(path);
+	for (int p = 0; p < ART_COUNT; p++) {
+		store_custom_path(id, (ArtPart)p, path, sizeof(path));
+		images_forget(path);
+	}
+	LiveArea la;
+	if (appdb_livearea(id, &la) != 0)
+		return;
+	for (int i = 0; i < la.bg_count + la.gate_count; i++) {
+		char rel[LIVEAREA_NAME_SIZE + 32];
+		snprintf(rel, sizeof(rel), "livearea/contents/%s", i < la.bg_count ? la.bg[i] : la.gate[i - la.bg_count]);
+		store_appmeta_path(id, rel, path, sizeof(path));
+		images_forget(path);
+	}
+}
+
+int app_require_unsafe(void) {
+	if (g_db_writable)
+		return 0;
+	dialog_message("Unsafe homebrew is disabled",
+	               "Changing an app's artwork needs write access to the system's artwork folder. Enable "
+	               "\"Unsafe homebrew\" in HENkaku Settings, then restart Imago.");
+	return 1;
+}
+
+static void on_restart_for_icon(int choice) {
+	if (choice == 0)
+		scePowerRequestColdReset();
+}
+
+void app_changed(int icon_changed, const char *done) {
+	char text[200];
+	if (!icon_changed) {
+		snprintf(text, sizeof(text), "%s. Open the app's LiveArea to see it.", done);
+		app_toast(text);
+		return;
+	}
+	snprintf(text, sizeof(text),
+	         "%s. LiveArea changes show right away, but the home screen only picks up a new bubble icon "
+	         "after a restart.",
+	         done);
+	dialog_confirm("Restart to see the icon?", text, "Restart now", 0, on_restart_for_icon);
+}
+
+// Pictura became Imago's Apps tab: its backups and customizations move over
+// once (both folders are on ux0:, so it's a rename).
+static void migrate_pictura(void) {
+	if (fs_exists(STORE_DIR) || !fs_is_dir("ux0:data/Pictura/apps"))
+		return;
+	if (fs_rename("ux0:data/Pictura/apps", STORE_DIR) == 0)
+		log_write("apps: moved Pictura's app backups to " STORE_DIR);
+	else
+		log_write("apps: couldn't move ux0:data/Pictura/apps");
+}
+
+static void draw_busy(void) {
+	if (!busy)
+		return;
+	ui_rect(0, 0, SCREEN_W, SCREEN_H, C_SCRIM);
+	float w = (float)ui_text_width(FONT_BODY, busy_label) + 80.0f, h = 64.0f;
+	float x = (SCREEN_W - w) * 0.5f, y = (SCREEN_H - h) * 0.5f;
+	ui_shadow(x, y, w, h, 18.0f, 1.0f);
+	ui_rrect(x, y, w, h, 18.0f, C_SURFACE2);
+	ui_spinner(x + 32.0f, y + h * 0.5f, 10.0f, C_ACCENT);
+	ui_text(FONT_BODY, x + 56.0f, y + h * 0.5f + 6.0f, C_TEXT, busy_label);
 }
 
 void app_switch_tab(Tab t) {
@@ -210,7 +366,7 @@ static void draw_logo(float x, float y) {
 }
 
 static void draw_header(void) {
-	static const char *const names[TAB_COUNT] = {"Discover", "Library", "Assets", "Settings"};
+	static const char *const names[TAB_COUNT] = {"Discover", "Library", "Assets", "Apps", "Settings"};
 	draw_logo(MARGIN, 15.0f);
 
 	float spacing = 30.0f, total = 0.0f;
@@ -280,7 +436,7 @@ static void draw_toast(void) {
 	ui_text(FONT_BODY, x + 20.0f, y + 26.0f, ui_alpha(C_TEXT, a), text);
 }
 
-static const char *const tab_names[TAB_COUNT] = {"Discover", "Library", "Assets", "Settings"};
+static const char *const tab_names[TAB_COUNT] = {"Discover", "Library", "Assets", "Apps", "Settings"};
 
 static void update_tabs(const Input *in) {
 	if (in->repeat & SCE_CTRL_LTRIGGER)
@@ -449,6 +605,7 @@ int main(void) {
 	net_init();
 	jobs_init(2);
 	images_init();
+	migrate_pictura();
 	tasks_init();
 	music_init();
 	g_db_writable = themedb_writable();
@@ -466,11 +623,17 @@ int main(void) {
 		report_finished_tasks();
 
 		Input routed = in;
-		if (update_splash(&in))
+		if (update_splash(&in) || busy)
 			memset(&routed, 0, sizeof(routed));
 
 		if (dialog_open()) {
 			dialog_update(&routed);
+		} else if (picture_picker_is_open()) {
+			picture_picker_update(&routed);
+		} else if (editor_is_open()) {
+			editor_update(&routed);
+		} else if (appdetail_is_open()) {
+			appdetail_update(&routed);
 		} else if (studio_is_open()) {
 			studio_update(&routed);
 		} else if (detail_is_open()) {
@@ -483,10 +646,13 @@ int main(void) {
 				assets_screen_leave();
 			if (tab != before)
 				log_write("tab: %s", tab_names[tab]);
+			if (tab == TAB_APPS && g_apps_generation == 0 && !g_apps_loading)
+				app_refresh_apps(); // the first visit lists the apps
 			switch (tab) {
 			case TAB_DISCOVER: discover_update(&routed); break;
 			case TAB_LIBRARY: library_screen_update(&routed); break;
 			case TAB_ASSETS: assets_screen_update(&routed); break;
+			case TAB_APPS: apps_screen_update(&routed); break;
 			default: settings_update(&routed); break;
 			}
 		}
@@ -499,12 +665,17 @@ int main(void) {
 		case TAB_DISCOVER: discover_draw(); break;
 		case TAB_LIBRARY: library_screen_draw(); break;
 		case TAB_ASSETS: assets_screen_draw(); break;
+		case TAB_APPS: apps_screen_draw(); break;
 		default: settings_draw(); break;
 		}
 		detail_draw();
 		studio_draw();
+		appdetail_draw();
+		editor_draw();
+		picture_picker_draw();
 		draw_toast();
 		dialog_draw();
+		draw_busy();
 		draw_splash();
 		vita2d_end_drawing();
 #ifdef IMAGO_AUTOPILOT

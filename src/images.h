@@ -18,6 +18,9 @@ void images_frame(void);
 
 ImageRef images_remote(const char *hash, int width);
 ImageRef images_file(const char *path);
+// Drops every cached texture of a local file (at any size), so it's decoded
+// again after the file was rewritten.
+void images_forget(const char *path);
 // A local picture shown small (grid cards): decoded at about max_width wide
 // instead of full size, to keep texture memory down.
 ImageRef images_file_sized(const char *path, int max_width);

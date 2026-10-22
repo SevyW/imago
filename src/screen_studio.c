@@ -396,10 +396,6 @@ void studio_update(const Input *in) {
 			snprintf(name, sizeof(name), "%s", text);
 		return;
 	}
-	if (picture_picker_is_open()) {
-		picture_picker_update(in);
-		return;
-	}
 	if (picking) {
 		update_picker(in);
 		return;
@@ -664,7 +660,7 @@ void studio_draw(void) {
 	               "The original theme stays as it is");
 
 	if (picture_picker_is_open()) {
-		picture_picker_draw();
+		// main draws the picture picker on top, with its own hints
 	} else if (picking) {
 		draw_picker(a);
 		Hint hints[] = {{ui_back_glyph(), "Cancel"}, {ui_ok_glyph(), "Take"}};

@@ -239,6 +239,24 @@ void ui_image(const vita2d_texture *tex, float x, float y, float w, float h, flo
 	vita2d_draw_array_textured(tex, SCE_GXM_PRIMITIVE_TRIANGLE_FAN, v, (size_t)n + 2, tint);
 }
 
+void ui_image_part(const vita2d_texture *tex, float x, float y, float w, float h, float u0, float v0, float u1,
+                   float v1, float r_tl, float r_tr, float r_br, float r_bl, uint32_t tint) {
+	float px[MAX_PERIMETER], py[MAX_PERIMETER];
+	const float radius[4] = {r_tl, r_tr, r_br, r_bl};
+	int n = perimeter(x, y, w, h, radius, px, py);
+	vita2d_texture_vertex *v = vita2d_pool_memalign((unsigned)((n + 2) * (int)sizeof(vita2d_texture_vertex)),
+	                                                sizeof(vita2d_texture_vertex));
+	if (!v)
+		return;
+	float du = u1 - u0, dv = v1 - v0;
+	v[0] = (vita2d_texture_vertex){x + w * 0.5f, y + h * 0.5f, 0.5f, u0 + du * 0.5f, v0 + dv * 0.5f};
+	for (int i = 0; i <= n; i++) {
+		float vx = px[i % n], vy = py[i % n];
+		v[i + 1] = (vita2d_texture_vertex){vx, vy, 0.5f, u0 + du * (vx - x) / w, v0 + dv * (vy - y) / h};
+	}
+	vita2d_draw_array_textured(tex, SCE_GXM_PRIMITIVE_TRIANGLE_FAN, v, (size_t)n + 2, tint);
+}
+
 // --- text -------------------------------------------------------------------
 
 static unsigned decode_utf8(const char **p) {

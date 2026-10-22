@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 
+#ifndef DATA_DIR // overridden by host-side tests
 #define DATA_DIR "ux0:data/Imago"
+#endif
 
 // Theme database backups. The manual one is only written from Settings; the
 // automatic ones rotate (auto-1 is the newest) so a bad session can never
@@ -20,6 +22,7 @@ typedef struct {
 	int partition;         // where new themes are installed
 	uint32_t last_seen_id; // newest theme id seen last session ("NEW" badges)
 	int share_photos;      // add theme wallpapers to the Photos app (photos.h)
+	int show_system;       // Apps tab: list system apps (NPXS...) too
 } Config;
 
 extern Config g_config;

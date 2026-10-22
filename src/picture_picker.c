@@ -26,7 +26,11 @@
 #define MAX_FOLDERS 32
 #define MAX_PICKS 10
 
+#define MAX_EXTRAS 24
+
 static int is_open, scanning, scan_generation;
+static Picture extras[MAX_EXTRAS];
+static int extra_count;
 static int max_pick;
 static PicturePickFn on_done;
 static char title[96];
@@ -76,6 +80,17 @@ static void scan_done(void *ctx) {
 	if (job->generation == scan_generation) {
 		pictures_free(&list);
 		list = job->result;
+		if (extra_count > 0) { // the extras go first, as a folder of their own
+			Picture *merged = malloc((size_t)(list.count + extra_count) * sizeof(Picture));
+			if (merged) {
+				memcpy(merged, extras, (size_t)extra_count * sizeof(Picture));
+				if (list.count)
+					memcpy(merged + extra_count, list.items, (size_t)list.count * sizeof(Picture));
+				free(list.items);
+				list.items = merged;
+				list.count += extra_count;
+			}
+		}
 		group_folders();
 		log_write("pictures: %d found in %d folder%s", list.count, folder_count, folder_count == 1 ? "" : "s");
 		folder = selected = 0;
@@ -89,7 +104,25 @@ static void scan_done(void *ctx) {
 	free(job);
 }
 
+static void open_picker(const char *heading, int max, PicturePickFn done);
+
+void picture_picker_open_with(const char *heading, int max, const char *extra_folder, const char *const *paths,
+                              int count, PicturePickFn done) {
+	extra_count = 0;
+	for (int i = 0; i < count && extra_count < MAX_EXTRAS; i++) {
+		snprintf(extras[extra_count].path, sizeof(extras[0].path), "%s", paths[i]);
+		snprintf(extras[extra_count].folder, sizeof(extras[0].folder), "%s", extra_folder);
+		extra_count++;
+	}
+	open_picker(heading, max, done);
+}
+
 void picture_picker_open(const char *heading, int max, PicturePickFn done) {
+	extra_count = 0;
+	open_picker(heading, max, done);
+}
+
+static void open_picker(const char *heading, int max, PicturePickFn done) {
 	snprintf(title, sizeof(title), "%s", heading);
 	max_pick = max < 1 ? 1 : max > MAX_PICKS ? MAX_PICKS : max;
 	on_done = done;

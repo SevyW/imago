@@ -9,6 +9,10 @@ typedef void (*PicturePickFn)(const char *const *paths, int count);
 
 // With max_pick == 1, choosing a picture finishes straight away.
 void picture_picker_open(const char *title, int max_pick, PicturePickFn done);
+// The same, with extra pictures (e.g. an app's current artwork) listed first
+// in a folder of their own.
+void picture_picker_open_with(const char *title, int max_pick, const char *extra_folder, const char *const *extras,
+                              int extra_count, PicturePickFn done);
 int picture_picker_is_open(void);
 void picture_picker_update(const Input *in);
 void picture_picker_draw(void);
