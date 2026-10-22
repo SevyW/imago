@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "library.h"
+#include "themedb.h"
 
 #include <stddef.h>
 
@@ -20,5 +21,13 @@ int photos_share(const LibraryItem *themes, int count, char *err, size_t err_siz
 int photos_unshare(void);
 // How many pictures Imago has added (reads the manifest).
 int photos_shared_count(void);
+
+// One theme's pictures (theme_dir: its folder, e.g. ux0:customtheme/Foo).
+int photos_theme_count(const char *theme_dir);
+// Blocking. Deletes just that theme's pictures; returns how many.
+int photos_unshare_theme(const char *theme_dir);
+// Which home-screen pages show one of its pictures from Photos as their
+// wallpaper: their numbers go to out. Returns how many.
+int photos_theme_pages(const char *theme_dir, const DbPage *pages, int page_count, int *out, int max);
 // Whether path is one of the copies Imago put in Photos.
 int photos_is_shared_copy(const char *path);

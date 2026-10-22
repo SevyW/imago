@@ -142,6 +142,29 @@ int main(void) {
 		CHECK(themedb_unregister("ux0:customtheme/Blob", err) == 1);
 	}
 
+	// Each home-screen page's wallpaper; the shell's own screens (negative
+	// numbers) and pages without one are skipped.
+	{
+		sqlite3_open(APP_DB_PATH, &db);
+		CHECK(sqlite3_exec(db,
+		                   "CREATE TABLE tbl_appinfo_page (pageId INTEGER PRIMARY KEY NOT NULL, pageNo INT NOT NULL,"
+		                   " themeFile TEXT, bgColor INT);"
+		                   "INSERT INTO tbl_appinfo_page (pageNo, themeFile) VALUES (-100000000, NULL),"
+		                   " (1, 'ux0:customtheme/Foo/bg1.png'), (0, 'ux0:customtheme/Foo/bg0.png'), (2, NULL),"
+		                   " (11, 'photo0:/ALL/ab/Foo \xC2\xB7 page 1.png');",
+		                   NULL, NULL, NULL) == SQLITE_OK);
+		sqlite3_close(db);
+		DbPage *pages;
+		CHECK(themedb_pages(&pages, &count, err) == 0);
+		CHECK(count == 3);
+		if (count == 3) {
+			CHECK(pages[0].page == 1 && strcmp(pages[0].file, "ux0:customtheme/Foo/bg0.png") == 0);
+			CHECK(pages[1].page == 2);
+			CHECK(pages[2].page == 12 && strstr(pages[2].file, "page 1.png") != NULL);
+		}
+		free(pages);
+	}
+
 	// A live rollback journal means the shell is mid-write: refuse to write.
 	static const unsigned char magic[12] = {0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7, 0, 0, 0, 0};
 	write_bytes(APP_DB_PATH "-journal", magic, sizeof(magic));

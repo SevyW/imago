@@ -40,6 +40,8 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
 
 **🌐 Artwork from the web.** Search six sites from any app's page: VitaDB and the PlayStation Store need no key; SteamGridDB, IGDB, TheGamesDB and RAWG take your own free key, typed or **scanned from a QR code** with the camera. [Setting up keys](#-online-artwork).
 
+**🗑️ Clearer uninstalls.** Uninstalling a theme now says where it's in use (the home-screen pages showing its wallpapers, or its pictures in Photos), and asks whether to delete its pictures from Photos too.
+
 **🔧 Fixed** (these affected 1.2.0 on real consoles):
 
 - **Theme names in the Library** showed only their first letter on consoles where the system keeps theme names in a different text format (UTF-16). Imago now reads both.
@@ -67,7 +69,7 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
 | 🔍 **Search, tags and authors** | Search with □. On any theme, tap a tag or *More by …* to filter the grid. ○ goes back to exactly where you were (same scroll, same theme highlighted) and SELECT jumps back to the start. |
 | ⬇️ **Background installs** | Press Install and keep browsing. Installs queue up, and progress shows on the card, in the detail view and in the header. |
 | 🔄 **Knows what's installed** | Cards are badged **INSTALLED**, **UPDATE** or **NEW**. Themes installed by Imago remember the exact version they came from, so updates are detected. |
-| 📚 **Library** | Your themes in a grid. Uninstall, remove from the system list but keep the files, re-add theme folders already on your card (one at a time or all at once), and check every theme for updates. |
+| 📚 **Library** | Your themes in a grid. Uninstall (Imago tells you if the theme is in use, and asks about its pictures in Photos), remove from the system list but keep the files, re-add theme folders already on your card (one at a time or all at once), and check every theme for updates. |
 | 🗂️ **Folders** | Sort your themes into your own folders (*Anime*, *Retro*, *Favourites*...): **✕ › Move to folder** on any theme. Folders show a preview of their first themes, and SELECT renames or deletes one. They're Imago's alone, so the system theme list is never touched. |
 | 🎛️ **Customize any theme** | Pick which wallpapers to keep, switch the music and custom icons off, rename it, and save it as a new theme. The original stays untouched, and the previews are redrawn from your new first wallpaper. |
 | 📚 **Asset library** | The **Assets** tab shows every wallpaper, icon set, song and lock screen across your installed themes. Preview them full screen, play the music right on the Vita, pick the parts you like (wallpapers from several themes, one page at a time), and press △ to turn them into a brand-new theme. |

@@ -130,6 +130,48 @@ done:
 	return rc;
 }
 
+int themedb_pages(DbPage **pages, int *count, char *err) {
+	*pages = NULL;
+	*count = 0;
+	pthread_mutex_lock(&db_lock);
+	sqlite3 *db = open_db(APP_DB_PATH, 0, err);
+	if (!db) {
+		pthread_mutex_unlock(&db_lock);
+		return -1;
+	}
+	sqlite3_stmt *stmt = NULL;
+	int rc = -1;
+	// Negative page numbers are the shell's own screens, not home pages.
+	if (sqlite3_prepare_v2(db,
+	                       "SELECT pageNo, themeFile FROM tbl_appinfo_page WHERE pageNo >= 0 AND themeFile IS NOT NULL "
+	                       "ORDER BY pageNo",
+	                       -1, &stmt, NULL) != SQLITE_OK) {
+		set_error(err, db, "Could not read the home screen pages");
+		goto done;
+	}
+	int capacity = 0;
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		if (*count == capacity) {
+			capacity = capacity ? capacity * 2 : 16;
+			DbPage *grown = realloc(*pages, (size_t)capacity * sizeof(DbPage));
+			if (!grown)
+				break;
+			*pages = grown;
+		}
+		DbPage *p = &(*pages)[*count];
+		p->page = sqlite3_column_int(stmt, 0) + 1;
+		db_column_string(stmt, 1, p->file, sizeof(p->file));
+		if (p->file[0])
+			(*count)++;
+	}
+	rc = 0;
+done:
+	sqlite3_finalize(stmt);
+	sqlite3_close(db);
+	pthread_mutex_unlock(&db_lock);
+	return rc;
+}
+
 static int exec(sqlite3 *db, const char *sql, char *err) {
 	if (sqlite3_exec(db, sql, NULL, NULL, NULL) != SQLITE_OK) {
 		set_error(err, db, "Database write failed");

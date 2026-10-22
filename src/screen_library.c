@@ -8,12 +8,15 @@
 #include "ime.h"
 #include "jobs.h"
 #include "log.h"
+#include "photos.h"
 #include "tasks.h"
+#include "themedb.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #define MAX_UPDATES 256
 
@@ -142,29 +145,129 @@ static void show_unsafe_message(void) {
 	               "\"Unsafe homebrew\" in HENkaku Settings, then restart Imago.");
 }
 
-static void on_confirm_uninstall(int choice) {
-	if (choice != 0)
-		return;
+// --- uninstalling ------------------------------------------------------------------
+
+static int photo_count; // the theme's pictures in Photos (photos.h)
+
+typedef struct {
+	char dir[256];
+	int deleted;
+} PhotosJob;
+
+static void photos_work(void *ctx, NetClient *net) {
+	(void)net;
+	PhotosJob *j = ctx;
+	j->deleted = photos_unshare_theme(j->dir);
+}
+
+static void photos_done(void *ctx) {
+	PhotosJob *j = ctx;
+	char text[64];
+	log_write("photos: deleted %d picture%s of %s", j->deleted, j->deleted == 1 ? "" : "s", j->dir);
+	snprintf(text, sizeof(text), "Deleted %d picture%s from Photos", j->deleted, j->deleted == 1 ? "" : "s");
+	app_toast(text);
+	free(j);
+}
+
+static void uninstall(int delete_photos) {
 	if (action_item.registered)
 		tasks_uninstall(action_item.dir, action_item.title, 0);
 	else
 		tasks_delete_files(action_item.dir, action_item.title);
+	PhotosJob *j = delete_photos ? calloc(1, sizeof(*j)) : NULL;
+	if (j) {
+		snprintf(j->dir, sizeof(j->dir), "%s", action_item.dir);
+		jobs_submit(photos_work, photos_done, j);
+	}
+}
+
+static void on_photos_choice(int choice) {
+	if (choice < 0)
+		app_toast("Nothing was uninstalled");
+	else
+		uninstall(choice == 1);
+}
+
+static void on_confirm_uninstall(int choice) {
+	if (choice != 0)
+		return;
+	if (!photo_count) {
+		uninstall(0);
+		return;
+	}
+	static char title[64];
+	snprintf(title, sizeof(title), "Its %d picture%s in Photos", photo_count, photo_count == 1 ? "" : "s");
+	static const char *const options[] = {"Keep them in Photos", "!Delete them from Photos"};
+	dialog_menu(title, options, 2, 0, on_photos_choice);
+}
+
+// "3", "1-6", "2, 4 and 11"
+static void format_pages(const int *pages, int n, char *out, size_t size) {
+	size_t len = 0;
+	out[0] = '\0';
+	for (int i = 0; i < n && len + 16 < size;) {
+		int j = i;
+		while (j + 1 < n && pages[j + 1] == pages[j] + 1)
+			j++;
+		const char *sep = i == 0 ? "" : j == n - 1 ? " and " : ", ";
+		if (j > i)
+			len += (size_t)snprintf(out + len, size - len, "%s%d\xE2\x80\x93%d", sep, pages[i], pages[j]);
+		else
+			len += (size_t)snprintf(out + len, size - len, "%s%d", sep, pages[i]);
+		i = j + 1;
+	}
+}
+
+// What the theme is used for right now: home-screen pages showing its own
+// wallpapers (it's the current theme), or its pictures from Photos.
+static void describe_use(char *out, size_t size) {
+	DbPage *pages = NULL;
+	int page_count = 0, own[64], copies[64], own_n = 0;
+	char err[THEMEDB_ERROR_SIZE], list[160];
+	themedb_pages(&pages, &page_count, err);
+	size_t n = strlen(action_item.dir);
+	for (int i = 0; i < page_count && own_n < 64; i++)
+		if (strncasecmp(pages[i].file, action_item.dir, n) == 0 && pages[i].file[n] == '/')
+			own[own_n++] = pages[i].page;
+	int copy_n = photo_count ? photos_theme_pages(action_item.dir, pages, page_count, copies, 64) : 0;
+	free(pages);
+
+	size_t len = strlen(out);
+	if (own_n) {
+		format_pages(own, own_n, list, sizeof(list));
+		len += (size_t)snprintf(out + len, size - len,
+		                        "\n\nIt's in use: home-screen page%s %s show%s its wallpapers. Switch to another "
+		                        "theme in Settings first.",
+		                        own_n == 1 ? "" : "s", list, own_n == 1 ? "s" : "");
+	}
+	if (photo_count) {
+		len += (size_t)snprintf(out + len, size - len, "\n\nImago added %d of its pictures to Photos",
+		                        photo_count);
+		if (copy_n) {
+			format_pages(copies, copy_n, list, sizeof(list));
+			len += (size_t)snprintf(out + len, size - len, "; page%s %s use%s one as %s wallpaper",
+			                        copy_n == 1 ? "" : "s", list, copy_n == 1 ? "s" : "", copy_n == 1 ? "its" : "their");
+		}
+		snprintf(out + len, size - len, ". You'll choose next whether to keep them.");
+	}
 }
 
 static void on_action(int choice) {
 	if (choice < 0)
 		return;
-	char message[400];
+	char message[700];
 	switch (action_ids[choice]) {
 	case ACT_UNINSTALL:
-		snprintf(message, sizeof(message),
-		         "\"%s\" will be removed and its files deleted from %s. If it's your current theme, "
-		         "switch to another one in Settings first.",
+		photo_count = photos_theme_count(action_item.dir);
+		snprintf(message, sizeof(message), "\"%s\" will be removed and its files deleted from %s.",
 		         action_item.title, action_item.dir);
+		describe_use(message, sizeof(message));
 		dialog_confirm("Uninstall theme?", message, "Uninstall", 1, on_confirm_uninstall);
 		break;
 	case ACT_DELETE_FILES:
+		photo_count = photos_theme_count(action_item.dir);
 		snprintf(message, sizeof(message), "The folder %s will be deleted from your memory card.", action_item.dir);
+		describe_use(message, sizeof(message));
 		dialog_confirm("Delete theme files?", message, "Delete", 1, on_confirm_uninstall);
 		break;
 	case ACT_REMOVE_ENTRY:

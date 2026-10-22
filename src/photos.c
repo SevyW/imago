@@ -211,13 +211,26 @@ static int remove_picture(const char *path, int *mounted) {
 	return 0;
 }
 
-int photos_unshare(void) {
+// Whether src is a file of the theme in folder dir.
+static int of_theme(const char *src, const char *dir) {
+	size_t n = strlen(dir);
+	while (n && dir[n - 1] == '/')
+		n--;
+	return strncasecmp(src, dir, n) == 0 && src[n] == '/';
+}
+
+// Deletes the pictures of one theme (theme_dir), or all of them (NULL).
+static int delete_pictures(const char *theme_dir) {
 	pthread_mutex_lock(&lock);
-	Manifest m, kept = {0}; // kept: pictures still there, so they can be deleted later
+	Manifest m, kept = {0}; // kept: other themes' pictures, and ones that couldn't be deleted
 	load_manifest(&m);
 	int removed = 0, missing = 0, failed = 0, mounted = 0;
 	for (int i = 0; i < m.count; i++) {
 		const char *out = m.items[i].out;
+		if (theme_dir && !of_theme(m.items[i].src, theme_dir)) {
+			add_entry(&kept, m.items[i].src, out);
+			continue;
+		}
 		if (!out[0])
 			continue;
 		if (remove_picture(out, &mounted) == 0) {
@@ -243,6 +256,47 @@ int photos_unshare(void) {
 	free(kept.items);
 	pthread_mutex_unlock(&lock);
 	return removed;
+}
+
+int photos_unshare(void) {
+	return delete_pictures(NULL);
+}
+
+int photos_unshare_theme(const char *theme_dir) {
+	return delete_pictures(theme_dir);
+}
+
+int photos_theme_count(const char *theme_dir) {
+	pthread_mutex_lock(&lock);
+	Manifest m;
+	load_manifest(&m);
+	int n = 0;
+	for (int i = 0; i < m.count; i++)
+		n += m.items[i].out[0] && of_theme(m.items[i].src, theme_dir);
+	free(m.items);
+	pthread_mutex_unlock(&lock);
+	return n;
+}
+
+int photos_theme_pages(const char *theme_dir, const DbPage *pages, int page_count, int *out, int max) {
+	pthread_mutex_lock(&lock);
+	Manifest m;
+	load_manifest(&m);
+	int n = 0;
+	for (int p = 0; p < page_count && n < max; p++) {
+		char file[256];
+		snprintf(file, sizeof(file), "%s", pages[p].file);
+		ux0_path(file, sizeof(file)); // the shell may name it photo0:/...
+		for (int i = 0; i < m.count; i++)
+			if (m.items[i].out[0] && of_theme(m.items[i].src, theme_dir) &&
+			    strcasecmp(skip_device(m.items[i].out), skip_device(file)) == 0) {
+				out[n++] = pages[p].page;
+				break;
+			}
+	}
+	free(m.items);
+	pthread_mutex_unlock(&lock);
+	return n;
 }
 
 int photos_shared_count(void) {

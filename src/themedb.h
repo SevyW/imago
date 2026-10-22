@@ -27,6 +27,13 @@ typedef struct {
 int themedb_writable(void);
 // Lists every row of tbl_theme. *themes must be freed by the caller.
 int themedb_list(DbTheme **themes, int *count, char *err);
+// The wallpaper of each home-screen page (tbl_appinfo_page), for telling
+// what a theme's pictures are used for. *pages must be freed by the caller.
+typedef struct {
+	int page; // 1 for the first page
+	char file[256];
+} DbPage;
+int themedb_pages(DbPage **pages, int *count, char *err);
 // Adds (or replaces) the row for a theme folder.
 int themedb_register(const char *dir, const ThemeXml *xml, int64_t size, char *err);
 // Removes the row(s) for a theme folder. Returns the number removed, or -1.
