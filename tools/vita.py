@@ -213,6 +213,8 @@ def main():
     p.add_argument("action", choices=["wait", "cmd", "ls", "get", "getdir", "put", "install", "shot", "keys", "launch", "unlock", "awake"])
     p.add_argument("args", nargs="*")
     a = p.parse_args()
+    if not a.ip:
+        sys.exit("Give the Vita's address with --ip or $VITA_IP")
     if a.action == "wait":
         reply = wait_online(a.ip)
         print(reply or "no answer")
