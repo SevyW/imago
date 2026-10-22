@@ -381,6 +381,37 @@ static void log_session(void) {
 	          APP_VERSION, fw.versionString,
 	          sceKernelGetModelForCDialog() == SCE_KERNEL_MODEL_VITATV ? "PS TV" : "PS Vita", space,
 	          g_db_writable ? "on" : "off", config_partition_device(g_config.partition));
+
+	// Plugins that change the home screen (livearea_nolimits, bubble layout
+	// tools...) can interact with themes, so reports should show them. taiHEN
+	// uses ux0:tai/config.txt when it exists, ur0:tai/config.txt otherwise.
+	const char *config = fs_exists("ux0:tai/config.txt") ? "ux0:tai/config.txt" : "ur0:tai/config.txt";
+	char *text;
+	if (fs_read_file(config, &text, NULL) != 0) {
+		log_write("plugins: no taiHEN config found");
+		return;
+	}
+	char list[900] = "";
+	size_t len = 0;
+	for (char *line = strtok(text, "\r\n"); line && len + 80 < sizeof(list); line = strtok(NULL, "\r\n")) {
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (!*line || *line == '#')
+			continue;
+		if (*line == '*') { // a section: *KERNEL, *main, *ALL or a title id
+			char *end = line + strcspn(line, " \t#");
+			*end = '\0';
+			len += (size_t)snprintf(list + len, sizeof(list) - len, "%s[%s]", len ? " " : "", line + 1);
+			continue;
+		}
+		char *end = line + strcspn(line, " \t#");
+		*end = '\0';
+		const char *name = strrchr(line, '/');
+		name = name ? name + 1 : strchr(line, ':') ? strchr(line, ':') + 1 : line;
+		len += (size_t)snprintf(list + len, sizeof(list) - len, " %s", name);
+	}
+	free(text);
+	log_write("plugins (%s):%s%s", config, list[0] == '[' ? " " : "", list);
 }
 
 // --- main -------------------------------------------------------------------------
