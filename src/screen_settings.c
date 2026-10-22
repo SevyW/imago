@@ -29,6 +29,7 @@ enum {
 	ITEM_APPS_SYSTEM,
 	ITEM_APPS_REAPPLY,
 	ITEM_APPS_RESTORE,
+	ITEM_SOURCES,
 	ITEM_BACKUP,
 	ITEM_RESTORE,
 	ITEM_CACHE,
@@ -284,6 +285,7 @@ static void activate(int item) {
 		else
 			apps_restore_all();
 		break;
+	case ITEM_SOURCES: sources_open(); break;
 	case ITEM_BACKUP:
 		fs_mkdir_p(BACKUP_DIR);
 		if (themedb_backup(BACKUP_MANUAL, err) == 0)
@@ -367,7 +369,7 @@ void settings_update(const Input *in) {
 void settings_draw(void) {
 	static const char *const titles[ITEM_COUNT] = {
 		"Install location", "Theme wallpapers in Photos", "Apps: show system apps", "Apps: put custom looks back",
-		"Apps: restore every original look", "Back up theme database", "Restore theme database",
+		"Apps: restore every original look", "Apps: artwork sources", "Back up theme database", "Restore theme database",
 		"Clear image cache", "Restart PS Vita", "Report a problem", "About Imago",
 	};
 	char values[ITEM_COUNT][64] = {{0}};
@@ -384,6 +386,7 @@ void settings_draw(void) {
 	snprintf(values[ITEM_APPS_SYSTEM], 64, "Settings, Music and the other built-in apps");
 	snprintf(values[ITEM_APPS_REAPPLY], 64, "After an app update or a database rebuild");
 	snprintf(values[ITEM_APPS_RESTORE], 64, "Undo every change made in the Apps tab");
+	snprintf(values[ITEM_SOURCES], 64, "SteamGridDB, IGDB and other sites, for app artwork");
 	snprintf(values[ITEM_BACKUP], 64, "Saved to %s", BACKUP_MANUAL);
 	snprintf(values[ITEM_RESTORE], 64, "Choose a manual or automatic backup");
 	if (cache_busy || cache_size < 0)

@@ -104,6 +104,18 @@ void assets_screen_update(const Input *in);
 void assets_screen_draw(void);
 void assets_screen_leave(void);
 
+// Searching artwork sites for an app's part; a pick opens the editor.
+void online_open(const char *id, const char *title, ArtPart part);
+int online_is_open(void);
+void online_update(const Input *in);
+void online_draw(void);
+
+// Settings > Artwork sources: the sites, their keys, connection tests.
+void sources_open(void);
+int sources_is_open(void);
+void sources_update(const Input *in);
+void sources_draw(void);
+
 void settings_update(const Input *in);
 // When "Theme wallpapers in Photos" is on, adds what isn't shared yet (in the
 // background). announce: report the result even when nothing was added.

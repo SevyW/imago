@@ -28,6 +28,18 @@ const char *net_error(const NetClient *client);
 int net_get(NetClient *client, const char *url, char **data, size_t *size, size_t max_bytes,
             const char *stop_marker, volatile int *cancel);
 
+// For web APIs: extra headers ("Name: value", NULL-terminated) and an optional
+// POST body. On NET_HTTP the response body is still returned (APIs explain
+// their errors in it); free it either way.
+typedef struct {
+	const char *const *headers;
+	const char *post; // NULL for GET
+} NetRequest;
+int net_fetch(NetClient *client, const char *url, const NetRequest *req, char **data, size_t *size,
+              size_t max_bytes, volatile int *cancel);
+// The last response's HTTP status (0 if none arrived).
+long net_status(const NetClient *client);
+
 // Return nonzero to cancel. total is -1 when unknown.
 typedef int (*NetProgress)(void *user, int64_t done, int64_t total);
 int net_download(NetClient *client, const char *url, const char *path, NetProgress progress, void *user);

@@ -31,7 +31,7 @@ typedef enum { SLOT_FREE, SLOT_QUEUED, SLOT_LOADING, SLOT_DECODED, SLOT_READY, S
 
 typedef struct {
 	char key[80];
-	char url[256];  // empty for local files
+	char url[512];  // empty for local files
 	char path[384]; // cache file, or the local source file
 	int max_width;  // local files: decode at most about this wide (0 = full size)
 	SlotState state;
@@ -198,14 +198,15 @@ static int load(Slot *job, NetClient *net, Pixels *out) {
 	if (!job->url[0] || !net)
 		return -1;
 	if (net_get(net, job->url, &data, &size, 4 * 1024 * 1024, NULL, &stopping) != NET_OK) {
-		log_write("image: %s: %s", job->url, net_error(net));
+		// Some sources put credentials in the query: log the address without it.
+		log_write("image: %.*s: %s", (int)strcspn(job->url, "?"), job->url, net_error(net));
 		return -1;
 	}
-	int rc = decode((unsigned char *)data, size, 0, out);
+	int rc = decode((unsigned char *)data, size, job->max_width, out);
 	if (rc == 0)
 		fs_write_file(job->path, data, size);
 	else
-		log_write("image: could not decode %u bytes from %s", (unsigned)size, job->url);
+		log_write("image: could not decode %u bytes from %.*s", (unsigned)size, (int)strcspn(job->url, "?"), job->url);
 	free(data);
 	return rc;
 }
@@ -382,12 +383,25 @@ ImageRef images_remote(const char *hash, int width) {
 	return request(key, url, path, 0);
 }
 
+// Paths and URLs can be long; a hash keeps keys unique and short.
+static unsigned long hash_text(const char *text) {
+	unsigned long h = 5381;
+	for (const char *p = text; *p; p++)
+		h = h * 33 + (unsigned char)*p;
+	return h;
+}
+
+ImageRef images_url(const char *url, int max_width) {
+	char key[80], path[256];
+	unsigned long h = hash_text(url);
+	snprintf(key, sizeof(key), "url%d:%08lx:%.50s", max_width, h, url + (strlen(url) > 50 ? strlen(url) - 50 : 0));
+	snprintf(path, sizeof(path), CACHE_DIR "/u%08lx_%u.img", h, (unsigned)strlen(url));
+	return request(key, url, path, max_width);
+}
+
 ImageRef images_file_sized(const char *path, int max_width) {
 	char key[80];
-	// Paths can be long; a hash keeps keys unique and short.
-	unsigned long h = 5381;
-	for (const char *p = path; *p; p++)
-		h = h * 33 + (unsigned char)*p;
+	unsigned long h = hash_text(path);
 	snprintf(key, sizeof(key), "file%d:%08lx:%.50s", max_width, h, path + (strlen(path) > 50 ? strlen(path) - 50 : 0));
 	return request(key, NULL, path, max_width);
 }

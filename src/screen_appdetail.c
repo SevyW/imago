@@ -170,6 +170,8 @@ static void on_part_menu(int choice) {
 	if (choice == 0)
 		choose_picture();
 	else if (choice == 1)
+		online_open(app_id, title, menu_part);
+	else if (choice == 2)
 		run(OP_CLEAR, menu_part);
 }
 
@@ -185,12 +187,8 @@ static void activate(int row) {
 	case ROW_BG:
 	case ROW_GATE: {
 		menu_part = row == ROW_ICON ? ART_ICON : row == ROW_BG ? ART_BG : ART_GATE;
-		if (!store_has_custom(app_id, menu_part)) {
-			choose_picture();
-			break;
-		}
-		static const char *const options[] = {"Choose a picture...", "Back to the original"};
-		dialog_menu(names[menu_part], options, 2, 0, on_part_menu);
+		static const char *const options[] = {"From the memory card...", "Search online...", "Back to the original"};
+		dialog_menu(names[menu_part], options, store_has_custom(app_id, menu_part) ? 3 : 2, 0, on_part_menu);
 		break;
 	}
 	case ROW_REAPPLY: run(OP_REAPPLY, ART_ICON); break;

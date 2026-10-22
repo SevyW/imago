@@ -136,33 +136,61 @@ static size_t mem_write(char *ptr, size_t size, size_t nmemb, void *user) {
 	return n;
 }
 
-int net_get(NetClient *c, const char *url, char **data, size_t *size, size_t max_bytes,
-            const char *stop_marker, volatile int *cancel) {
+static int fetch(NetClient *c, const char *url, const NetRequest *req, char **data, size_t *size, size_t max_bytes,
+                 const char *stop_marker, volatile int *cancel) {
 	if (!c)
 		return NET_ERR;
 	MemSink sink = {NULL, 0, 0, max_bytes, stop_marker, 0, cancel};
 	setup(c, url);
 	curl_easy_setopt(c->curl, CURLOPT_WRITEFUNCTION, mem_write);
 	curl_easy_setopt(c->curl, CURLOPT_WRITEDATA, &sink);
+	struct curl_slist *headers = NULL;
+	if (req) {
+		for (const char *const *h = req->headers; h && *h; h++)
+			headers = curl_slist_append(headers, *h);
+		if (headers)
+			curl_easy_setopt(c->curl, CURLOPT_HTTPHEADER, headers);
+		if (req->post)
+			curl_easy_setopt(c->curl, CURLOPT_POSTFIELDS, req->post);
+	}
 	CURLcode res = curl_easy_perform(c->curl);
+	curl_slist_free_all(headers);
 	if (sink.marker_found)
 		res = CURLE_OK;
 	else if (res == CURLE_WRITE_ERROR && sink.size >= max_bytes && !(cancel && *cancel))
 		snprintf(c->error, sizeof(c->error), "Response too large");
 	int rc = finish(c, res, cancel && *cancel);
-	if (rc == NET_OK && !sink.data) {
+	if ((rc == NET_OK || (rc == NET_HTTP && req)) && !sink.data) {
 		sink.data = calloc(1, 1);
 		if (!sink.data)
 			rc = NET_ERR;
 	}
-	if (rc != NET_OK) {
+	if (rc != NET_OK && !(rc == NET_HTTP && req)) {
 		free(sink.data);
 		return rc;
 	}
 	*data = sink.data;
 	if (size)
 		*size = sink.size;
-	return NET_OK;
+	return rc;
+}
+
+int net_get(NetClient *c, const char *url, char **data, size_t *size, size_t max_bytes,
+            const char *stop_marker, volatile int *cancel) {
+	return fetch(c, url, NULL, data, size, max_bytes, stop_marker, cancel);
+}
+
+int net_fetch(NetClient *c, const char *url, const NetRequest *req, char **data, size_t *size, size_t max_bytes,
+              volatile int *cancel) {
+	static const NetRequest plain = {NULL, NULL};
+	return fetch(c, url, req ? req : &plain, data, size, max_bytes, NULL, cancel);
+}
+
+long net_status(const NetClient *c) {
+	long status = 0;
+	if (c)
+		curl_easy_getinfo(c->curl, CURLINFO_RESPONSE_CODE, &status);
+	return status;
 }
 
 typedef struct {

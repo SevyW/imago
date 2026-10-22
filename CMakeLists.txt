@@ -36,6 +36,19 @@ target_compile_definitions(sqlite3 PRIVATE
   SQLITE_DQS=0
 )
 
+# JSON from the artwork sites' APIs, and QR codes (API keys) from the camera.
+add_library(cjson STATIC third_party/cjson/cJSON.c)
+target_include_directories(cjson PUBLIC third_party/cjson)
+target_compile_options(cjson PRIVATE -w)
+add_library(quirc STATIC
+  third_party/quirc/decode.c
+  third_party/quirc/identify.c
+  third_party/quirc/quirc.c
+  third_party/quirc/version_db.c
+)
+target_include_directories(quirc PUBLIC third_party/quirc)
+target_compile_options(quirc PRIVATE -w)
+
 add_executable(${PROJECT_NAME}
   src/main.c
   src/assets.c
@@ -61,6 +74,10 @@ add_executable(${PROJECT_NAME}
   src/screen_studio.c
   src/screen_apps.c
   src/screen_appdetail.c
+  src/screen_online.c
+  src/screen_sources.c
+  src/artwork.c
+  src/keys.c
   src/screen_editor.c
   src/store.c
   src/appdb.c
@@ -77,6 +94,7 @@ add_executable(${PROJECT_NAME}
   src/jpegio.c
   src/photos.c
   src/pictures.c
+  src/qrscan.c
   src/picture_picker.c
   src/themedb.c
   src/dbtext.c
@@ -93,6 +111,8 @@ target_link_options(${PROJECT_NAME} PRIVATE -Wl,--defsym,__sce_headroom=0x4000)
 
 target_link_libraries(${PROJECT_NAME}
   sqlite3
+  cjson
+  quirc
   vita2d
   curl
   ssl
@@ -109,6 +129,7 @@ target_link_libraries(${PROJECT_NAME}
   SceAppUtil_stub
   SceAudio_stub
   SceAudiodec_stub
+  SceCamera_stub
   SceCommonDialog_stub
   SceCtrl_stub
   SceDisplay_stub
@@ -127,6 +148,15 @@ target_link_libraries(${PROJECT_NAME}
   SceSysmodule_stub
   SceTouch_stub
 )
+
+# ScreenScraper only answers apps with developer credentials it issued; they
+# are kept out of the repository and given at build time.
+set(IMAGO_SS_DEVID "" CACHE STRING "ScreenScraper developer id (optional)")
+set(IMAGO_SS_DEVPASSWORD "" CACHE STRING "ScreenScraper developer password (optional)")
+if(IMAGO_SS_DEVID AND IMAGO_SS_DEVPASSWORD)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
+    IMAGO_SS_DEVID="${IMAGO_SS_DEVID}" IMAGO_SS_DEVPASSWORD="${IMAGO_SS_DEVPASSWORD}")
+endif()
 
 if(IMAGO_AUTOPILOT)
   target_compile_definitions(${PROJECT_NAME} PRIVATE IMAGO_AUTOPILOT)

@@ -7,6 +7,7 @@
 #include "images.h"
 #include "ime.h"
 #include "jobs.h"
+#include "keys.h"
 #include "log.h"
 #include "music.h"
 #include "net.h"
@@ -600,6 +601,7 @@ int main(void) {
 	fs_mkdir_p(DATA_DIR);
 	log_init();
 	config_load();
+	keys_load();
 	folders_load();
 	input_init();
 	net_init();
@@ -640,8 +642,12 @@ int main(void) {
 			picture_picker_update(&routed);
 		} else if (editor_is_open()) {
 			editor_update(&routed);
+		} else if (online_is_open()) {
+			online_update(&routed);
 		} else if (appdetail_is_open()) {
 			appdetail_update(&routed);
+		} else if (sources_is_open()) {
+			sources_update(&routed);
 		} else if (studio_is_open()) {
 			studio_update(&routed);
 		} else if (detail_is_open()) {
@@ -678,7 +684,9 @@ int main(void) {
 		}
 		detail_draw();
 		studio_draw();
+		sources_draw();
 		appdetail_draw();
+		online_draw();
 		editor_draw();
 		picture_picker_draw();
 		draw_toast();

@@ -17,6 +17,9 @@ void images_shutdown(void);
 void images_frame(void);
 
 ImageRef images_remote(const char *hash, int width);
+// Any PNG or JPEG on the web (online artwork results), decoded at about
+// max_width wide (0 = full size) and cached on the memory card.
+ImageRef images_url(const char *url, int max_width);
 ImageRef images_file(const char *path);
 // Drops every cached texture of a local file (at any size), so it's decoded
 // again after the file was rewritten.
