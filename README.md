@@ -82,12 +82,16 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
     <td><img src="docs/images/installed.png" alt="A theme installed"><br><sub><b>Installed</b>: ready in Settings › Theme &amp; Background</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/library.png" alt="The library"><br><sub><b>Library</b>: an update available and a folder <b>NOT ADDED</b> yet</sub></td>
+    <td><img src="docs/images/library.png" alt="The library as a grid with folders"><br><sub><b>Library</b>: your own folders, an <b>UPDATE</b> and a theme <b>NOT ADDED</b> yet</sub></td>
     <td><img src="docs/images/options.png" alt="Theme options"><br><sub><b>Options</b>: update, uninstall, or remove from the system only</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/uninstall.png" alt="Uninstall confirmation"><br><sub><b>Uninstall</b>: destructive actions default to Cancel</sub></td>
     <td><img src="docs/images/restore.png" alt="Choosing a backup to restore"><br><sub><b>Restore</b>: pick a manual or automatic backup</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/pictures.png" alt="The Pictures shelf in Assets, with a picture picked as a wallpaper and one as the lock screen"><br><sub><b>Your pictures</b>: screenshots and photos as wallpapers or the lock screen</sub></td>
+    <td><img src="docs/images/picture_picker.png" alt="Choosing pictures in Theme Studio, one folder at a time"><br><sub><b>Picture browser</b>: add pictures to any theme in Theme Studio</sub></td>
   </tr>
 </table>
 

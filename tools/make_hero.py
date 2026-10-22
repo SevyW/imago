@@ -152,7 +152,7 @@ def main():
 </svg>
 '''
     out = IMAGES / "hero.svg"
-    out.write_text(svg, encoding="utf-8")
+    out.write_text(svg, encoding="utf-8", newline="\n")
     print(f"wrote {out.relative_to(ROOT)} ({out.stat().st_size / 1024:.0f} KB, {count} slides)")
 
 

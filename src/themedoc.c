@@ -389,6 +389,23 @@ int themedoc_take_lockscreen_image(ThemeDoc *doc, const ThemeDoc *from) {
 	return 0;
 }
 
+static int is_picture_node(const ThemeDoc *doc, const XmlNode *n) {
+	return n && n->origin >= 0 && n->origin < doc->origin_count && doc->origin_pictures[n->origin];
+}
+
+int themedoc_uses_pictures(const ThemeDoc *doc, ThemePart part) {
+	if (part == PART_LOCKSCREEN)
+		return is_picture_node(doc, xml_find(doc->root, "StartScreenProperty/m_filePath"));
+	if (part != PART_WALLPAPERS)
+		return 0;
+	XmlNode *pages[THEMEDOC_MAX_PAGES];
+	int n = page_nodes(doc, pages, THEMEDOC_MAX_PAGES);
+	for (int i = 0; i < n; i++)
+		if (is_picture_node(doc, xml_find(pages[i], "m_imageFilePath")))
+			return 1;
+	return 0;
+}
+
 void themedoc_credit(const ThemeDoc *doc, char *out, size_t size) {
 	int used[THEMEDOC_MAX_ORIGINS] = {0};
 	used[0] = 1;

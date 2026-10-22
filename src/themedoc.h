@@ -61,6 +61,9 @@ int themedoc_take_part(ThemeDoc *doc, ThemePart part, const ThemeDoc *from);
 // Replaces only the lock screen picture, keeping this theme's clock and
 // notification colours.
 int themedoc_take_lockscreen_image(ThemeDoc *doc, const ThemeDoc *from);
+// Whether any wallpaper (PART_WALLPAPERS) or the lock screen (PART_LOCKSCREEN)
+// is one of your pictures.
+int themedoc_uses_pictures(const ThemeDoc *doc, ThemePart part);
 // Credits every theme whose parts are used: "akane, MajorTom87".
 void themedoc_credit(const ThemeDoc *doc, char *out, size_t size);
 

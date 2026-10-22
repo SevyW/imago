@@ -201,7 +201,7 @@ void picture_picker_update(const Input *in) {
 			finish(0);
 			return;
 		}
-		app_toast("Pick pictures with \xE2\x9C\x95 first");
+		app_toast("Pick some pictures first");
 	}
 
 	if (in->tapped) {

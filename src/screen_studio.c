@@ -49,9 +49,7 @@ static int music_on, icons_on;
 static int focus;
 static int strip_active, strip_focus;
 static int is_new; // built from the asset library: always redraw previews
-static int previews_dirty;   // pictures were added: the previews must be redrawn
-static int pictures_in_pages; // how many pages are your own pictures
-static int lock_from_picture; // the lock screen is one of your pictures
+static int previews_dirty; // pictures were added: the previews must be redrawn
 static float strip_scroll;
 
 static int picking; // the picker is open for picker_part
@@ -78,7 +76,7 @@ int studio_open_doc(void *doc_ptr, const char *new_name, int new_theme) {
 	work = *doc;
 	memset(doc, 0, sizeof(*doc)); // ownership moved here
 	is_new = new_theme;
-	previews_dirty = pictures_in_pages = lock_from_picture = 0;
+	previews_dirty = 0;
 	snprintf(base_dir, sizeof(base_dir), "%s", work.origins[0]);
 	if (new_theme)
 		snprintf(base_title, sizeof(base_title), "New theme");
@@ -245,7 +243,6 @@ static void add_picture_pages(const char *const *paths, int count) {
 		app_toast("Couldn't add those pictures (too many themes mixed?)");
 	} else {
 		reset_pages();
-		pictures_in_pages += count;
 		previews_dirty = 1;
 		strip_active = 1;
 		strip_focus = kept;
@@ -260,7 +257,6 @@ static void use_lock_picture(const char *const *paths, int count) {
 	if (themedoc_from_pictures(&pics, NULL, 0, paths[0]) != 0 || themedoc_take_lockscreen_image(&work, &pics) != 0) {
 		app_toast("Couldn't use that picture");
 	} else {
-		lock_from_picture = 1;
 		previews_dirty = 1;
 		focus = ROW_LOCKSCREEN;
 	}
@@ -299,12 +295,8 @@ static void take_from(int index) {
 	} else if (themedoc_take_part(&work, picker_part, &other) != 0) {
 		app_toast("Couldn't take that part (too many themes mixed?)");
 	} else {
-		if (picker_part == PART_WALLPAPERS) {
+		if (picker_part == PART_WALLPAPERS)
 			reset_pages();
-			pictures_in_pages = 0;
-		}
-		if (picker_part == PART_LOCKSCREEN)
-			lock_from_picture = 0;
 		if (picker_part == PART_MUSIC)
 			music_on = 1;
 		if (picker_part == PART_ICONS)
@@ -629,7 +621,7 @@ void studio_draw(void) {
 	char value[200], note[160];
 	draw_row(ROW_NAME, "Name", name, 0, a);
 	origin_note(PART_WALLPAPERS, note, sizeof(note));
-	if (pictures_in_pages)
+	if (themedoc_uses_pictures(&work, PART_WALLPAPERS))
 		snprintf(note, sizeof(note), " \xC2\xB7 with your pictures");
 	snprintf(value, sizeof(value), "%d of %d pages%s", kept_pages(), page_count, note);
 	draw_row(ROW_WALLPAPERS, "Wallpapers", value, 0, a);
@@ -653,7 +645,7 @@ void studio_draw(void) {
 
 	origin_note(PART_LOCKSCREEN, note, sizeof(note));
 	snprintf(value, sizeof(value), "%s%s", note[0] ? "Mixed in" : "Original", note);
-	draw_row(ROW_LOCKSCREEN, "Lock screen", lock_from_picture ? "Your picture" : value, 0, a);
+	draw_row(ROW_LOCKSCREEN, "Lock screen", themedoc_uses_pictures(&work, PART_LOCKSCREEN) ? "Your picture" : value, 0, a);
 	origin_note(PART_STATUSBAR, note, sizeof(note));
 	snprintf(value, sizeof(value), "%s%s", note[0] ? "Mixed in" : "Original", note);
 	draw_row(ROW_STATUSBAR, "Status bar & notifications", value, 0, a);

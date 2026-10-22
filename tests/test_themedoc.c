@@ -250,6 +250,7 @@ int main(int argc, char **argv) {
 		CHECK(themedoc_from_pictures(&pic, list, 3, pics[1]) == 0);
 		CHECK(themedoc_page_count(&pic) == 3 && themedoc_has_part(&pic, PART_LOCKSCREEN));
 		CHECK(themedoc_has_part(&pic, PART_STATUSBAR));
+		CHECK(themedoc_uses_pictures(&pic, PART_WALLPAPERS) && themedoc_uses_pictures(&pic, PART_LOCKSCREEN));
 		CHECK(pic.origin_count == 2 && pic.origin_pictures[0] && pic.origin_pictures[1]);
 		char page[512];
 		themedoc_page_file(&pic, 1, 0, page, sizeof(page));
@@ -285,6 +286,7 @@ int main(int argc, char **argv) {
 		ThemeDoc base, mixed;
 		CHECK(themedoc_load(&base, dirs[0]) == 0);
 		CHECK(themedoc_copy(&mixed, &base) == 0);
+		CHECK(!themedoc_uses_pictures(&mixed, PART_WALLPAPERS) && !themedoc_uses_pictures(&mixed, PART_LOCKSCREEN));
 		const ThemeDoc *froms[3] = {&base, &pic, &pic};
 		int pages[3] = {0, 0, 2};
 		CHECK(themedoc_set_pages(&mixed, froms, pages, 3) == 0);
@@ -294,6 +296,7 @@ int main(int argc, char **argv) {
 		char color_before[32], color_after[32];
 		xml_get_text(xml_find(mixed.root, "StartScreenProperty/m_dateColor"), color_before, sizeof(color_before));
 		CHECK(themedoc_take_lockscreen_image(&mixed, &lockpic) == 0);
+		CHECK(themedoc_uses_pictures(&mixed, PART_WALLPAPERS) && themedoc_uses_pictures(&mixed, PART_LOCKSCREEN));
 		xml_get_text(xml_find(mixed.root, "StartScreenProperty/m_dateColor"), color_after, sizeof(color_after));
 		CHECK(strcmp(color_before, color_after) == 0);
 		themedoc_lockscreen_file(&mixed, lock, sizeof(lock));

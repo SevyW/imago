@@ -559,9 +559,16 @@ void assets_screen_draw(void) {
 		strncat(summary, part, sizeof(summary) - strlen(summary) - 1);
 	}
 	char fitted[256];
-	ui_text_fit(FONT_BODY, total_picks() ? summary : "Pick parts with \xE2\x9C\x95 to build a new theme", 600,
-	            fitted, sizeof(fitted));
-	ui_text(FONT_BODY, MARGIN + 16.0f, BAR_Y + 27.0f, total_picks() ? C_TEXT : C_TEXT3, fitted);
+	if (total_picks()) {
+		ui_text_fit(FONT_BODY, summary, 600, fitted, sizeof(fitted));
+		ui_text(FONT_BODY, MARGIN + 16.0f, BAR_Y + 27.0f, C_TEXT, fitted);
+	} else { // "Pick parts with (X) to build a new theme", with the real button glyph
+		float tx = MARGIN + 16.0f;
+		tx += (float)ui_text(FONT_BODY, tx, BAR_Y + 27.0f, C_TEXT3, "Pick parts with ") + 2.0f;
+		ui_glyph(ui_ok_glyph(), tx + (float)ui_glyph_width(ui_ok_glyph()) * 0.5f, BAR_Y + 21.0f, 1.0f);
+		tx += (float)ui_glyph_width(ui_ok_glyph()) + 6.0f;
+		ui_text(FONT_BODY, tx, BAR_Y + 27.0f, C_TEXT3, "to build a new theme");
+	}
 	float bw = 200.0f, bx = SCREEN_W - MARGIN - bw - 5.0f;
 	ui_rrect(bx, BAR_Y + 5.0f, bw, 32.0f, 11.0f, total_picks() ? C_ACCENT : C_SURFACE3);
 	ui_glyph(GLYPH_TRIANGLE, bx + 20.0f, BAR_Y + 21.0f, 1.0f);

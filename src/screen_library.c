@@ -522,12 +522,15 @@ static void card_text(float x, float y, const char *title, const char *meta) {
 // A folder shows the first four of its themes as a 2x2 mosaic.
 static void draw_folder(int folder, float x, float y, int focused) {
 	card_frame(x, y, focused);
-	float w = (CARD_W - 3 * 4.0f) * 0.5f, h = (IMAGE_H - 3 * 4.0f) * 0.5f;
-	int shown = 0;
-	for (int i = 0; i < g_library.count && shown < 4; i++) {
+	int total = folder_size(folder), shown = 0;
+	int cols = total >= 2 ? 2 : 1, rows = total >= 3 ? 2 : 1;
+	float w = (CARD_W - (float)(cols + 1) * 4.0f) / (float)cols;
+	float h = (IMAGE_H - (float)(rows + 1) * 4.0f) / (float)rows;
+	for (int i = 0; i < g_library.count && shown < cols * rows; i++) {
 		if (theme_folder(i) != folder)
 			continue;
-		float tx = x + 4.0f + (float)(shown % 2) * (w + 4.0f), ty = y + 4.0f + (float)(shown / 2) * (h + 4.0f);
+		float tx = x + 4.0f + (float)(shown % cols) * (w + 4.0f);
+		float ty = y + 4.0f + (float)(shown / cols) * (h + 4.0f);
 		ui_rrect(tx, ty, w, h, 8.0f, C_SURFACE2);
 		draw_thumb(g_library.items[i].thumb, tx, ty, w, h, 8.0f, 8.0f);
 		shown++;
@@ -631,7 +634,7 @@ void library_screen_draw(void) {
 	} else if (cell_count == 0) {
 		ui_text_center(FONT_TITLE, SCREEN_W * 0.5f, top + 110.0f, C_TEXT, "This folder is empty");
 		ui_text_center(FONT_BODY, SCREEN_W * 0.5f, top + 140.0f, C_TEXT2,
-		               "Move themes here with \xE2\x9C\x95 \xE2\x80\xBA Move to folder.");
+		               "Open a theme's options and choose Move to folder.");
 	} else {
 		vita2d_enable_clipping();
 		vita2d_set_clip_rectangle(0, (int)top - 10, SCREEN_W, (int)GRID_BOTTOM + 4);
