@@ -56,6 +56,7 @@ Browse thousands of PS Vita custom themes from [psvt.ovh](https://psvt.ovh), tap
 | 📚 **Asset library** | The **Assets** tab shows every wallpaper, icon set, song and lock screen across your installed themes. Preview them full screen, play the music right on the Vita, pick the parts you like (wallpapers from several themes, one page at a time), and press △ to turn them into a brand-new theme. |
 | 🧪 **Mix themes** | In Theme Studio, press △ on any part (wallpapers, music, icons, lock screen, status bar) to take it from another installed theme. Every author whose parts you use is credited in the new theme. |
 | 📸 **Your own pictures** | Screenshots, photos and any JPEG or PNG on your memory card can become wallpapers or the lock screen: from the **Pictures** shelf in Assets, or **Your pictures** in Theme Studio. Imago resizes them to the Vita's 960×512 and saves them in the 8-bit format themes use. |
+| 🫧 **Restyle your apps** | The **Apps** tab changes any app's bubble icon, LiveArea background and start gate, from your own pictures or [artwork found online](#-online-artwork). The original artwork is backed up first, and one press puts it back. |
 | 💾 **Careful with the system** | Backs up the system theme list before changing it, checks it for damage first, and never deletes anything outside a `customtheme` folder. More below. |
 | 🏞️ **Theme wallpapers in Photos** | Optional (*Settings › Theme wallpapers in Photos*): adds the wallpapers and lock screens of your installed themes to the Photos app, so you can pick them in the system's own page-wallpaper picker. Handy with plugins like [livearea_nolimits](https://github.com/devnoname120/livearea_nolimits), where themes only reach the first 10 home-screen pages. The first time can take a while with a large theme collection; after that only new themes are added. Turning it off can delete exactly the pictures Imago added. |
 | 📂 **Install anywhere** | `ux0:`, `ur0:` or `uma0:`, using the same `customtheme` folders as Custom Themes Manager, so themes from either app show up in both. |
@@ -165,6 +166,31 @@ Each release's notes list what changed, what to test, and how to recover if some
 
 On Japanese consoles ✕ and ○ are swapped, as the system does. Touch works everywhere: tap to open, drag to scroll.
 
+## 🌐 Online artwork
+
+In the **Apps** tab, choose a part of an app (bubble icon, LiveArea background or start gate), then **Search online**. Pick a picture and Imago downloads it and opens it in the editor, which frames it and converts it to the Vita's format.
+
+| Source | What it has | Key |
+|---|---|---|
+| [VitaDB](https://www.rinnegatamante.eu/vitadb/) | Homebrew icons and screenshots, matched by the app's title ID | None |
+| PlayStation Store | Official icons of retail games | None |
+| [SteamGridDB](https://www.steamgriddb.com) | Icons, square grids, wide banners | Free: sign in, then [Preferences › API](https://www.steamgriddb.com/profile/preferences/api) |
+| [IGDB](https://www.igdb.com) | Covers, artworks, screenshots | Free, through Twitch: turn on two-factor authentication, register an app at [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps) (redirect URL `http://localhost`, client type *Confidential*), then copy its Client ID and make a Client Secret |
+| [TheGamesDB](https://thegamesdb.net) | Box art, fanart, banners, screenshots | Free: make an account and [request a key](https://api.thegamesdb.net/key.php). Searches use part of a monthly allowance |
+| [RAWG](https://rawg.io) | Backgrounds and screenshots | Free for personal use: [Get API Key](https://rawg.io/apidocs) |
+
+**Adding a key:** *Settings › Apps: artwork sources*, choose the site, then **Type the key** or **Scan a QR code**. The scanner uses the back camera; press □ to switch to the front one. Imago tests the connection right away, and **Test the connection** checks it again any time. Keys stay on your memory card in `ux0:data/Imago/keys.txt` and never appear in the log.
+
+**Making the QR code:** a QR code saves typing a long key on the Vita. We recommend [inyourbrowser.com's text-to-QR generator](https://www.inyourbrowser.com/qr-code-generator/text-to-qr): it makes the code inside your browser, without sending what you type to a server. Avoid generators that make the code on their server, since they see your key. Put either the bare key in the code, or one `name=value` per line to set up several sites in one scan:
+
+```
+steamgriddb=YOUR_STEAMGRIDDB_KEY
+igdb_id=YOUR_TWITCH_CLIENT_ID
+igdb_secret=YOUR_TWITCH_CLIENT_SECRET
+thegamesdb=YOUR_THEGAMESDB_KEY
+rawg=YOUR_RAWG_KEY
+```
+
 ## 🛡️ Built to keep your Vita safe
 
 Changing `app.db` is the one risky thing a theme manager does. Imago treats it that way:
@@ -247,7 +273,7 @@ flowchart LR
 | [`assets/brand/`](assets/brand/) | The source artwork by Sevy: the ghost icon and the IMAGO key art. |
 | [`tools/`](tools/) | Scripts that generate the app's artwork from `assets/brand/` and this README's hero image (from a public-domain PS Vita photo in `tools/assets/`). |
 | [`assets/`](assets/) | The Inter typeface (SIL Open Font License). |
-| [`third_party/sqlite/`](third_party/sqlite/) | The SQLite amalgamation (public domain). |
+| [`third_party/`](third_party/) | The SQLite amalgamation (public domain), [cJSON](https://github.com/DaveGamble/cJSON) (MIT) and [quirc](https://github.com/dlbeer/quirc) (ISC). |
 | [`docs/images/`](docs/images/) | Screenshots and recordings used here. |
 
 ## 🚀 Building
@@ -309,10 +335,12 @@ Imago is free and always will be. If it made your Vita a little more yours, you 
 - **Themes and the repository:** [psvt.ovh](https://psvt.ovh) by Red Squirrel, who also wrote Custom Themes Manager. The site runs on donations, so please consider [supporting it](https://gofund.me/e8f1d6c4).
 - **[Inter](https://rsms.me/inter/)** typeface by Rasmus Andersson (SIL Open Font License).
 - **[SQLite](https://sqlite.org)**, **[libvita2d](https://github.com/xerpi/libvita2d)**, **[curl](https://curl.se)**, **zlib**, **libpng** and **libjpeg-turbo**, via [VitaSDK](https://vitasdk.org).
+- **[cJSON](https://github.com/DaveGamble/cJSON)** by Dave Gamble (MIT) and **[quirc](https://github.com/dlbeer/quirc)** QR decoding by Daniel Beer (ISC).
+- **Online artwork** from [VitaDB](https://www.rinnegatamante.eu/vitadb/) by Rinnegatamante, [SteamGridDB](https://www.steamgriddb.com), [IGDB](https://www.igdb.com), [TheGamesDB](https://thegamesdb.net), [RAWG](https://rawg.io) and the PlayStation Store. The pictures belong to their creators and publishers.
 - **Thumbnail resizing** by [wsrv.nl](https://wsrv.nl).
 - **PS Vita photo** in the header by [Evan-Amos](https://commons.wikimedia.org/wiki/File:PlayStation-Vita-1101-FL.png) (public domain); the screen shows real Imago screenshots.
 - **The `tbl_theme` layout** follows vitasdk's `psp2/lsdb.h` notes and the open-source [Tema](https://github.com/xamthor/Tema) installer.
 
 ## 📄 License
 
-Imago is released under the [MIT License](LICENSE), © 2026 Sevy (@SevyW). The bundled Inter typeface is under the SIL Open Font License, and SQLite and the PS Vita photo are in the public domain.
+Imago is released under the [MIT License](LICENSE), © 2026 Sevy (@SevyW). The bundled Inter typeface is under the SIL Open Font License, cJSON under the MIT License, quirc under the ISC License, and SQLite and the PS Vita photo are in the public domain.
