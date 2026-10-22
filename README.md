@@ -14,6 +14,7 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
 ![SDK](https://img.shields.io/badge/built%20with-VitaSDK-988879)
 ![Built with](https://img.shields.io/badge/vibe--coded%20with-Claude-d97757?logo=anthropic&logoColor=white)
 ![Version](https://img.shields.io/badge/version-1.3.0-c2292f)
+![Downloads](https://img.shields.io/github/downloads/SevyW/imago/total)
 ![Status](https://img.shields.io/badge/status-console--tested-3fa35b)
 ![License](https://img.shields.io/badge/license-MIT-f6eede)
 [![Ko-fi](https://img.shields.io/badge/support%20me-Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/sevyw)
@@ -384,6 +385,24 @@ zig cc -std=c11 -DFOLDERS_FILE='"scratch/folders.txt"' -o test_folders tests/tes
   src/fs.c && ./test_folders
 ```
 
+
+## ❓ Questions
+
+<details>
+<summary><b>I already have themes from Custom Themes Manager. Can I use them in Imago?</b></summary>
+
+<br>
+
+Yes, and usually there's nothing to do. Imago uses the same `customtheme` folders as Custom Themes Manager, so themes it installed are in Imago's **Library** the first time you open it. A theme's background music is a file inside its folder, so it comes along untouched.
+
+- **It's in the Library:** you're done. Apply it in *Settings › Theme & Background* as always.
+- **It shows as NOT ADDED** (its folder is on your memory card, but not in the system's theme list, for example after a database rebuild): press □ *Add local themes* to add them all, or ✕ › *Add to system themes* for just one.
+- **You only have the downloaded .zip:** extract it with VitaShell into `ux0:customtheme/` (or `ur0:` / `uma0:`), so you get `ux0:customtheme/YourTheme/theme.xml`. Then add it as above.
+- **It's still on psvt.ovh:** search for it in Imago (□ in Discover) and install it from there. Imago then knows which version you have, and can tell you when there's an update.
+
+Once it's in Imago, the **Assets** tab plays its music and shows its wallpapers, and **Theme Studio** (✕ › *Customize or mix…*) can change its wallpapers, swap in your own pictures, or mix in parts of other themes. Studio saves a copy, so the original stays untouched.
+
+</details>
 
 ## 🐞 Something not working?
 
