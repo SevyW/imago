@@ -29,6 +29,7 @@ static int typing = -1;
 static char typed[4][KEY_VALUE_MAX];
 
 static int scanning;
+static int use_front; // for this session: the back camera may be dirty or broken
 
 void sources_open(void) {
 	is_open = 1;
@@ -118,7 +119,7 @@ static void finish_typing(void) {
 
 static void start_scanning(void) {
 	char err[160];
-	if (qrscan_open(err, sizeof(err)) != 0) {
+	if (qrscan_open(use_front, err, sizeof(err)) != 0) {
 		dialog_message("No camera", err);
 		return;
 	}
@@ -254,6 +255,11 @@ void sources_update(const Input *in) {
 			on_qr(text);
 		else if ((in->pressed & BTN_BACK) || in->tapped)
 			stop_scanning();
+		else if (in->pressed & SCE_CTRL_SQUARE) {
+			use_front = !use_front;
+			stop_scanning();
+			start_scanning();
+		}
 		return;
 	}
 	int count = artwork_count();
@@ -309,7 +315,9 @@ static void draw_scanner(float a) {
 	ui_rect(0, 0, SCREEN_W, SCREEN_H, ui_alpha(C_BG, a));
 	float h = 400.0f, w = h * QRSCAN_W / QRSCAN_H, x = (SCREEN_W - w) * 0.5f, y = 44.0f;
 	vita2d_texture *tex = qrscan_preview();
-	if (tex)
+	if (tex && use_front) // shown mirrored, like a selfie, so moving the code feels natural
+		ui_image_part(tex, x, y, w, h, 1, 0, 0, 1, 12, 12, 12, 12, ui_alpha(0xFFFFFFFF, a));
+	else if (tex)
 		ui_image(tex, x, y, w, h, 12, 12, 12, 12, ui_alpha(0xFFFFFFFF, a));
 	else
 		ui_rrect(x, y, w, h, 12.0f, ui_alpha(C_SURFACE, a));
@@ -320,10 +328,11 @@ static void draw_scanner(float a) {
 	if (!tex)
 		ui_spinner(SCREEN_W * 0.5f, y + h * 0.5f, 18.0f, ui_alpha(C_TEXT2, a));
 	char text[128];
-	snprintf(text, sizeof(text), "Point the back camera at the QR code for %s", artwork_get(menu_source)->name);
+	snprintf(text, sizeof(text), "Point the %s camera at the QR code for %s", use_front ? "front" : "back",
+	         artwork_get(menu_source)->name);
 	ui_text_center(FONT_BODY, SCREEN_W * 0.5f, y + h + 30.0f, ui_alpha(C_TEXT, a), text);
-	Hint hints[1] = {{ui_back_glyph(), "Cancel"}};
-	app_footer(hints, 1, NULL);
+	Hint hints[2] = {{ui_back_glyph(), "Cancel"}, {GLYPH_SQUARE, use_front ? "Back camera" : "Front camera"}};
+	app_footer(hints, 2, NULL);
 }
 
 void sources_draw(void) {

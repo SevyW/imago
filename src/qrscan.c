@@ -59,7 +59,7 @@ static void *decode_thread(void *arg) {
 	return NULL;
 }
 
-int qrscan_open(char *err, size_t err_size) {
+int qrscan_open(int front, char *err, size_t err_size) {
 	qrscan_close();
 	frame_tex = vita2d_create_empty_texture_format(QRSCAN_W, QRSCAN_H, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
 	decoder = quirc_new();
@@ -79,11 +79,12 @@ int qrscan_open(char *err, size_t err_size) {
 	info.pitch = (uint16_t)(vita2d_texture_get_stride(frame_tex) / 4 - QRSCAN_W);
 	info.sizeIBase = vita2d_texture_get_stride(frame_tex) * QRSCAN_H;
 	info.pIBase = vita2d_texture_get_datap(frame_tex);
-	int rc = sceCameraOpen(SCE_CAMERA_DEVICE_BACK, &info);
+	int device = front ? SCE_CAMERA_DEVICE_FRONT : SCE_CAMERA_DEVICE_BACK;
+	int rc = sceCameraOpen(device, &info);
 	if (rc >= 0) {
-		rc = sceCameraStart(SCE_CAMERA_DEVICE_BACK);
+		rc = sceCameraStart(device);
 		if (rc < 0)
-			sceCameraClose(SCE_CAMERA_DEVICE_BACK);
+			sceCameraClose(device);
 	}
 	if (rc < 0) {
 		log_write("qr: camera 0x%08X", (unsigned)rc);
@@ -91,7 +92,7 @@ int qrscan_open(char *err, size_t err_size) {
 		qrscan_close();
 		return -1;
 	}
-	open_device = SCE_CAMERA_DEVICE_BACK;
+	open_device = device;
 	stopping = busy = found = 0;
 	if (jobs_spawn_thread(decode_thread, NULL, &thread) != 0) {
 		snprintf(err, err_size, "The camera couldn't be started.");
