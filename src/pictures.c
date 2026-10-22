@@ -4,7 +4,7 @@
 #include "log.h"
 #include "photos.h"
 
-#include <psp2/kernel/threadmgr.h>
+#include <psp2/apputil.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +26,17 @@ static int is_picture(const char *name) {
 	return dot && (strcasecmp(dot, ".jpg") == 0 || strcasecmp(dot, ".jpeg") == 0 || strcasecmp(dot, ".png") == 0);
 }
 
+// ux0:picture's own folders, as the Photos app calls them.
+static const char *folder_label(const char *name) {
+	if (strcmp(name, "ALL") == 0)
+		return "Photos";
+	if (strcmp(name, "SCREENSHOT") == 0)
+		return "Screenshots";
+	if (strcmp(name, "CAMERA") == 0)
+		return "Camera";
+	return name;
+}
+
 static void walk(Walk *w);
 
 static int visit(const char *name, int is_dir, void *user) {
@@ -39,7 +50,8 @@ static int visit(const char *name, int is_dir, void *user) {
 			return 0;
 		Walk sub = *w;
 		snprintf(sub.dir, sizeof(sub.dir), "%s/%s", w->dir, name);
-		snprintf(sub.folder, sizeof(sub.folder), "%s", name);
+		if (w->depth == 0) // top-level folders name the group; deeper ones (PhotoExport's ALL/xx) join it
+			snprintf(sub.folder, sizeof(sub.folder), "%s", folder_label(name));
 		sub.depth = w->depth + 1;
 		walk(&sub);
 		w->capacity = sub.capacity;
@@ -69,9 +81,11 @@ static int visit(const char *name, int is_dir, void *user) {
 static void walk(Walk *w) {
 	if (fs_list_dir(w->dir, visit, w) == 0 || w->depth > 0)
 		return;
-	// ux0:picture can be briefly unreadable while the system updates its
-	// photo index (right after screenshots were deleted, say): try once more.
-	sceKernelDelayThread(500 * 1000);
+	// After Photos changes (a screenshot taken or deleted, say) the system
+	// shuts apps out of ux0:picture for half a minute or so. Mounting photo0:
+	// lets them back in.
+	if (sceAppUtilPhotoMount() >= 0)
+		sceAppUtilPhotoUmount();
 	if (fs_list_dir(w->dir, visit, w) != 0)
 		log_write("pictures: couldn't list %s", w->dir);
 }

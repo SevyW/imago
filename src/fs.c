@@ -10,6 +10,7 @@
 
 #ifdef __vita__
 #include <psp2/io/devctl.h>
+#include <psp2/io/stat.h>
 #endif
 
 #ifdef _WIN32
@@ -217,9 +218,16 @@ int fs_list_dir(const char *path, FsDirCallback cb, void *user) {
 	while ((e = readdir(dir))) {
 		if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
 			continue;
+#ifdef __vita__
+		// The entry carries its own stat: stat() itself fails in some places
+		// (ux0:picture) that can still be listed.
+		int is_dir = SCE_S_ISDIR(e->d_stat.st_mode);
+#else
 		char full[512];
 		snprintf(full, sizeof(full), "%s/%s", path, e->d_name);
-		if (cb(e->d_name, fs_is_dir(full), user))
+		int is_dir = fs_is_dir(full);
+#endif
+		if (cb(e->d_name, is_dir, user))
 			break;
 	}
 	closedir(dir);

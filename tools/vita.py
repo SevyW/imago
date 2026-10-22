@@ -9,6 +9,9 @@
     python tools/vita.py [--ip IP] install build/Pictura.vpk
     python tools/vita.py [--ip IP] shot screen.png          screenshot (PS + START) and download it
     python tools/vita.py [--ip IP] keys down down cross     tap buttons in order
+    python tools/vita.py [--ip IP] launch IMAG00001         screen on, launch, then unlock
+    python tools/vita.py [--ip IP] unlock                   pull the lock screen's tab
+    python tools/vita.py [--ip IP] awake on|off             keep the screen on while Imago runs
 
 `install` unpacks the VPK here, uploads it to ux0:/data/vita-install/<TITLEID>,
 and asks the plugin to promote (install) that folder.
@@ -29,6 +32,7 @@ CMD_PORT = 1338
 FTP_PORT = 1337
 STAGING = "ux0:/data/vita-install"
 SHOTS = "ux0:/picture/SCREENSHOT"
+KEEP_AWAKE = "ux0:/data/Imago/keep-awake"
 
 
 def command(ip, text, wait=3.0):
@@ -136,6 +140,20 @@ def install(ip, vpk):
     print(command(ip, f"promote {root}", wait=30).strip())
 
 
+def unlock(ip):
+    """Pulls the lock screen's tab (top-right corner) towards the middle, as a
+    finger would. Touch coordinates are twice the screen's (1920x1088).
+    Only for the lock screen: in a LiveArea the same pull closes the app."""
+    steps = ["press front-touch 0 1790 190", "wait 80ms"]
+    for i in range(1, 13):
+        steps += [f"press front-touch 0 {1790 - i * 90} {190 + i * 50}", "wait 30ms"]
+    steps += ["release front-touch 0"]
+    for k in range(0, len(steps), 8):
+        reply = command(ip, "; ".join(steps[k:k + 8]), wait=1.0)
+        if "Error" in reply:
+            raise RuntimeError(reply.strip())
+
+
 def newest_screenshot(f):
     """Path of the newest PNG under ux0:/picture/SCREENSHOT (one folder per app)."""
     best = None
@@ -192,7 +210,7 @@ def screenshot(ip, local):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ip", default=os.environ.get("VITA_IP"))
-    p.add_argument("action", choices=["wait", "cmd", "ls", "get", "getdir", "put", "install", "shot", "keys"])
+    p.add_argument("action", choices=["wait", "cmd", "ls", "get", "getdir", "put", "install", "shot", "keys", "launch", "unlock", "awake"])
     p.add_argument("args", nargs="*")
     a = p.parse_args()
     if a.action == "wait":
@@ -207,6 +225,27 @@ def main():
         return
     if a.action == "keys":
         keys(a.ip, a.args)
+        return
+    if a.action == "unlock":
+        unlock(a.ip)
+        return
+    if a.action == "launch":
+        # Synthetic input doesn't count as activity, so the screen may have
+        # timed out; launching then wakes the console onto the lock screen.
+        print(command(a.ip, f"screen on; launch {a.args[0]}", wait=5).strip())
+        time.sleep(5)
+        unlock(a.ip)
+        return
+    if a.action == "awake":
+        # Imago keeps the screen on while this file exists (read at launch).
+        f = ftp(a.ip)
+        if a.args and a.args[0] == "off":
+            f.delete(KEEP_AWAKE)
+            print("keep-awake off (from Imago's next launch)")
+        else:
+            f.storbinary("STOR " + KEEP_AWAKE, io.BytesIO(b""))
+            print("keep-awake on (from Imago's next launch)")
+        f.quit()
         return
     if a.action == "shot":
         saved = screenshot(a.ip, a.args[0] if a.args else "screen.png")

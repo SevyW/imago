@@ -613,9 +613,17 @@ int main(void) {
 	app_refresh_library();
 	discover_init();
 
+	// For testing over vitacompanion: its synthetic input doesn't count as
+	// activity, so the screen would go off (and lock) mid-test.
+	int keep_awake = fs_exists(DATA_DIR "/keep-awake");
+	if (keep_awake)
+		log_write("keep-awake: the screen stays on");
+
 	Input in;
 	memset(&in, 0, sizeof(in));
 	for (;;) {
+		if (keep_awake)
+			sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
 		input_update(&in);
 		ui_begin_frame();
 		images_frame();

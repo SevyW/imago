@@ -4,6 +4,8 @@
 #include "log.h"
 #include "themedoc.h"
 
+#include <errno.h>
+#include <psp2/apputil.h>
 #include <psp2/photoexport.h>
 #include <psp2/sysmodule.h>
 #include <pthread.h>
@@ -12,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
 
 #define PHOTO_EXPORT_VERSION 0x03150021
 #define ERROR_ALREADY_EXPORTED 0x80101A0B
@@ -92,29 +95,6 @@ static const char *skip_device(const char *path) {
 	return path;
 }
 
-// PhotoExport reads its titles as UTF-16, although the SDK declares the
-// fields as UTF-32: on a console, UTF-32 titles came out as their first letter.
-static void to_utf16(const char *in, uint16_t *out, size_t size) {
-	size_t n = 0;
-	const unsigned char *s = (const unsigned char *)in;
-	while (*s && n + 2 < size) {
-		unsigned c = *s++;
-		int extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
-		if (extra)
-			c &= 0x3F >> extra;
-		for (int i = 0; i < extra && (*s & 0xC0) == 0x80; i++)
-			c = (c << 6) | (*s++ & 0x3F);
-		if (c >= 0x10000) { // a surrogate pair
-			c -= 0x10000;
-			out[n++] = (uint16_t)(0xD800 + (c >> 10));
-			out[n++] = (uint16_t)(0xDC00 + (c & 0x3FF));
-		} else {
-			out[n++] = (uint16_t)c;
-		}
-	}
-	out[n] = 0;
-}
-
 // PhotoExport reports where it saved a picture as photo0:/ALL/..., another
 // name for ux0:picture/ALL/...; Imago works with the ux0: name.
 static void ux0_path(char *path, size_t size) {
@@ -130,14 +110,13 @@ static void ux0_path(char *path, size_t size) {
 
 static int export_picture(const char *src, const char *title, char *out, size_t out_size) {
 	static char work[64 * 1024]; // PhotoExport's working memory; calls are serialised by the lock
-	uint16_t title16[128], app16[8];
-	to_utf16(title, title16, sizeof(title16) / sizeof(title16[0]));
-	to_utf16("Imago", app16, sizeof(app16) / sizeof(app16[0]));
 	PhotoExportParam param;
 	memset(&param, 0, sizeof(param));
 	param.version = PHOTO_EXPORT_VERSION;
-	param.photoTitle = (const SceWChar32 *)title16;
-	param.gameTitle = (const SceWChar32 *)app16;
+	// The SDK declares the titles as UTF-32, but PhotoExport reads UTF-8: on a
+	// console, UTF-32 and UTF-16 titles came out as their first letter.
+	param.photoTitle = (const SceWChar32 *)title;
+	param.gameTitle = (const SceWChar32 *)"Imago";
 	out[0] = '\0';
 	int rc = scePhotoExportFromFile(src, &param, work, NULL, NULL, out, (SceSize)out_size);
 	ux0_path(out, out_size);
@@ -146,8 +125,9 @@ static int export_picture(const char *src, const char *title, char *out, size_t 
 
 int photos_share(const LibraryItem *themes, int count, char *err, size_t err_size) {
 	pthread_mutex_lock(&lock);
-	if (sceSysmoduleIsLoaded(SCE_SYSMODULE_PHOTO_EXPORT) != 0 &&
-	    sceSysmoduleLoadModule(SCE_SYSMODULE_PHOTO_EXPORT) != 0) {
+	// Unloaded again at the end: while it's loaded the system can't take
+	// screenshots.
+	if (sceSysmoduleLoadModule(SCE_SYSMODULE_PHOTO_EXPORT) != 0) {
 		snprintf(err, err_size, "The system's photo library isn't available.");
 		pthread_mutex_unlock(&lock);
 		return -1;
@@ -190,6 +170,7 @@ int photos_share(const LibraryItem *themes, int count, char *err, size_t err_siz
 	}
 	save_manifest(&m);
 	free(m.items);
+	sceSysmoduleUnloadModule(SCE_SYSMODULE_PHOTO_EXPORT);
 	pthread_mutex_unlock(&lock);
 	if (failed)
 		log_write("photos: %d picture%s couldn't be added (0x%08X)", failed, failed == 1 ? "" : "s",
@@ -201,16 +182,65 @@ int photos_share(const LibraryItem *themes, int count, char *err, size_t err_siz
 	return added;
 }
 
+// After Photos changes, the system shuts apps out of ux0:picture for a while
+// ("Not owner"); the same files are always reachable through photo0:.
+static int remove_picture(const char *path, int *mounted) {
+	char target[256];
+	snprintf(target, sizeof(target), "%s", path);
+	if (remove(target) != 0) {
+		if (errno != EPERM || strncmp(path, "ux0:picture/", 12) != 0)
+			return -1;
+		if (!*mounted) {
+			int rc = sceAppUtilPhotoMount();
+			if (rc < 0)
+				log_write("photos: couldn't mount photo0: (0x%08X)", (unsigned)rc);
+			*mounted = rc >= 0 ? 1 : -1;
+		}
+		snprintf(target, sizeof(target), "photo0:%s", path + 12);
+		if (remove(target) != 0)
+			return -1;
+	}
+	// PhotoExport makes a folder (ALL/xx) for every picture or two: drop it
+	// once it's empty. rmdir refuses while other pictures are in it.
+	char *slash = strrchr(target, '/');
+	if (slash) {
+		*slash = '\0';
+		if (strstr(target, "ALL/"))
+			rmdir(target);
+	}
+	return 0;
+}
+
 int photos_unshare(void) {
 	pthread_mutex_lock(&lock);
-	Manifest m;
+	Manifest m, kept = {0}; // kept: pictures still there, so they can be deleted later
 	load_manifest(&m);
-	int removed = 0;
-	for (int i = 0; i < m.count; i++)
-		if (m.items[i].out[0] && fs_exists(m.items[i].out) && remove(m.items[i].out) == 0)
+	int removed = 0, missing = 0, failed = 0, mounted = 0;
+	for (int i = 0; i < m.count; i++) {
+		const char *out = m.items[i].out;
+		if (!out[0])
+			continue;
+		if (remove_picture(out, &mounted) == 0) {
 			removed++;
+		} else if (errno == ENOENT) {
+			if (missing++ == 0)
+				log_write("photos: %s is already gone", out);
+		} else {
+			if (failed++ == 0)
+				log_write("photos: couldn't delete %s (%s)", out, strerror(errno));
+			add_entry(&kept, m.items[i].src, out);
+		}
+	}
+	if (mounted > 0)
+		sceAppUtilPhotoUmount(); // a mounted photo0: keeps the system from taking screenshots
+	if (missing > 1 || failed > 1)
+		log_write("photos: %d already gone, %d couldn't be deleted", missing, failed);
 	free(m.items);
-	remove(PHOTOS_MANIFEST);
+	if (kept.count)
+		save_manifest(&kept);
+	else
+		remove(PHOTOS_MANIFEST);
+	free(kept.items);
 	pthread_mutex_unlock(&lock);
 	return removed;
 }
