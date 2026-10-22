@@ -1,5 +1,7 @@
 #include "themedb.h"
 
+#include "dbtext.h"
+
 #include "fs.h"
 #include "sqlite3.h"
 
@@ -105,15 +107,15 @@ int themedb_list(DbTheme **themes, int *count, char *err) {
 		memset(t, 0, sizeof(*t));
 		for (int c = 0; c < sqlite3_column_count(stmt); c++) {
 			const char *name = sqlite3_column_name(stmt, c);
-			const unsigned char *text = sqlite3_column_text(stmt, c);
+			// The shell keeps these as UTF-16 blobs on the console (dbtext.h).
 			if (strcmp(name, "id") == 0)
-				copy_text(t->id, sizeof(t->id), text);
+				db_column_string(stmt, c, t->id, sizeof(t->id));
 			else if (strcmp(name, "titleDefault") == 0)
-				copy_text(t->title, sizeof(t->title), text);
+				db_column_string(stmt, c, t->title, sizeof(t->title));
 			else if (strcmp(name, "providerDefault") == 0)
-				copy_text(t->provider, sizeof(t->provider), text);
+				db_column_string(stmt, c, t->provider, sizeof(t->provider));
 			else if (strcmp(name, "packageImageFilePath") == 0)
-				copy_text(t->package_image, sizeof(t->package_image), text);
+				db_column_string(stmt, c, t->package_image, sizeof(t->package_image));
 			else if (strcmp(name, "size") == 0)
 				t->size = sqlite3_column_int64(stmt, c);
 		}

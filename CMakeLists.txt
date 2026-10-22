@@ -79,6 +79,7 @@ add_executable(${PROJECT_NAME}
   src/pictures.c
   src/picture_picker.c
   src/themedb.c
+  src/dbtext.c
   src/ui.c
   src/unzip.c
   src/vita_vfs.c

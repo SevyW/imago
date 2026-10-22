@@ -1,5 +1,7 @@
 #include "appdb.h"
 
+#include "dbtext.h"
+
 #include "fs.h"
 #include "sqlite3.h"
 #include "store.h"
@@ -137,9 +139,10 @@ int appdb_titles(AppTitle **titles, int *count) {
 		goto done;
 	int capacity = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		const char *id = (const char *)sqlite3_column_text(stmt, 0);
-		const char *title = (const char *)sqlite3_column_text(stmt, 1);
-		if (!id || !title || strlen(id) >= sizeof((*titles)->id))
+		char id[32], title[256];
+		db_column_string(stmt, 0, id, sizeof(id));
+		db_column_string(stmt, 1, title, sizeof(title));
+		if (!id[0] || !title[0] || strlen(id) >= sizeof((*titles)->id))
 			continue;
 		if (*count == capacity) {
 			capacity = capacity ? capacity * 2 : 64;
@@ -163,8 +166,7 @@ done:
 }
 
 static void text_column(sqlite3_stmt *stmt, int col, char *out, size_t size) {
-	const char *text = (const char *)sqlite3_column_text(stmt, col);
-	snprintf(out, size, "%s", text ? text : "");
+	db_column_string(stmt, col, out, size); // UTF-16 blobs too (dbtext.h)
 }
 
 // Reads the app's tbl_livearea row. Returns 0 when there is a usable one,

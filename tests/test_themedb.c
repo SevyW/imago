@@ -109,6 +109,39 @@ int main(void) {
 	CHECK(themedb_unregister("ux0:customtheme/Slash", err) == 1);
 	CHECK(count_rows() == 2);
 
+	// On the console the shell keeps titles and authors as UTF-16LE blobs.
+	{
+		// "PlayStation® 30th 🎮" and "Ashnoxious"
+		static const unsigned char title16[] = {'P', 0, 'l', 0, 'a', 0, 'y', 0, 'S', 0, 't', 0, 'a', 0, 't', 0,
+		                                        'i', 0, 'o', 0, 'n', 0, 0xAE, 0, ' ', 0, '3', 0, '0', 0, 't', 0,
+		                                        'h', 0, ' ', 0, 0x3C, 0xD8, 0xAE, 0xDF};
+		static const unsigned char author16[] = {'A', 0, 's', 0, 'h', 0, 'n', 0, 'o', 0, 'x', 0, 'i', 0, 'o', 0,
+		                                         'u', 0, 's', 0};
+		sqlite3_stmt *st;
+		sqlite3_open(APP_DB_PATH, &db);
+		sqlite3_prepare_v2(db,
+		                   "INSERT INTO tbl_theme (id, type, lastModifiedTime, titleDefault, providerDefault) "
+		                   "VALUES ('ux0:customtheme/Blob', 100, 0, ?1, ?2)",
+		                   -1, &st, NULL);
+		sqlite3_bind_blob(st, 1, title16, sizeof(title16), SQLITE_STATIC);
+		sqlite3_bind_blob(st, 2, author16, sizeof(author16), SQLITE_STATIC);
+		CHECK(sqlite3_step(st) == SQLITE_DONE);
+		sqlite3_finalize(st);
+		sqlite3_close(db);
+		CHECK(themedb_list(&list, &count, err) == 0);
+		int found = 0;
+		for (int i = 0; i < count; i++)
+			if (strcmp(list[i].id, "ux0:customtheme/Blob") == 0) {
+				found = 1;
+				printf("blob title: %s | %s\n", list[i].title, list[i].provider);
+				CHECK(strcmp(list[i].title, "PlayStation\xC2\xAE 30th \xF0\x9F\x8E\xAE") == 0);
+				CHECK(strcmp(list[i].provider, "Ashnoxious") == 0);
+			}
+		CHECK(found);
+		free(list);
+		CHECK(themedb_unregister("ux0:customtheme/Blob", err) == 1);
+	}
+
 	// A live rollback journal means the shell is mid-write: refuse to write.
 	static const unsigned char magic[12] = {0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7, 0, 0, 0, 0};
 	write_bytes(APP_DB_PATH "-journal", magic, sizeof(magic));

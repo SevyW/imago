@@ -7,6 +7,7 @@
 #include <psp2/photoexport.h>
 #include <psp2/sysmodule.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,8 @@ typedef struct {
 } Manifest;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void ux0_path(char *path, size_t size);
 
 static int add_entry(Manifest *m, const char *src, const char *out) {
 	if (m->count == m->capacity) {
@@ -54,7 +57,10 @@ static void load_manifest(Manifest *m) {
 		if (!tab)
 			continue;
 		*tab = '\0';
-		add_entry(m, line, tab + 1);
+		char out[256];
+		snprintf(out, sizeof(out), "%s", tab + 1);
+		ux0_path(out, sizeof(out));
+		add_entry(m, line, out);
 	}
 	free(text);
 }
@@ -86,34 +92,56 @@ static const char *skip_device(const char *path) {
 	return path;
 }
 
-// PhotoExport takes UTF-32 titles.
-static void to_utf32(const char *in, SceWChar32 *out, size_t size) {
+// PhotoExport reads its titles as UTF-16, although the SDK declares the
+// fields as UTF-32: on a console, UTF-32 titles came out as their first letter.
+static void to_utf16(const char *in, uint16_t *out, size_t size) {
 	size_t n = 0;
 	const unsigned char *s = (const unsigned char *)in;
-	while (*s && n + 1 < size) {
+	while (*s && n + 2 < size) {
 		unsigned c = *s++;
 		int extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
 		if (extra)
 			c &= 0x3F >> extra;
 		for (int i = 0; i < extra && (*s & 0xC0) == 0x80; i++)
 			c = (c << 6) | (*s++ & 0x3F);
-		out[n++] = c;
+		if (c >= 0x10000) { // a surrogate pair
+			c -= 0x10000;
+			out[n++] = (uint16_t)(0xD800 + (c >> 10));
+			out[n++] = (uint16_t)(0xDC00 + (c & 0x3FF));
+		} else {
+			out[n++] = (uint16_t)c;
+		}
 	}
 	out[n] = 0;
 }
 
+// PhotoExport reports where it saved a picture as photo0:/ALL/..., another
+// name for ux0:picture/ALL/...; Imago works with the ux0: name.
+static void ux0_path(char *path, size_t size) {
+	if (strncmp(path, "photo0:", 7) != 0)
+		return;
+	const char *rest = path + 7;
+	while (*rest == '/')
+		rest++;
+	char fixed[256];
+	snprintf(fixed, sizeof(fixed), "ux0:picture/%s", rest);
+	snprintf(path, size, "%s", fixed);
+}
+
 static int export_picture(const char *src, const char *title, char *out, size_t out_size) {
 	static char work[64 * 1024]; // PhotoExport's working memory; calls are serialised by the lock
-	SceWChar32 title32[128], app32[8];
-	to_utf32(title, title32, sizeof(title32) / sizeof(title32[0]));
-	to_utf32("Imago", app32, sizeof(app32) / sizeof(app32[0]));
+	uint16_t title16[128], app16[8];
+	to_utf16(title, title16, sizeof(title16) / sizeof(title16[0]));
+	to_utf16("Imago", app16, sizeof(app16) / sizeof(app16[0]));
 	PhotoExportParam param;
 	memset(&param, 0, sizeof(param));
 	param.version = PHOTO_EXPORT_VERSION;
-	param.photoTitle = title32;
-	param.gameTitle = app32;
+	param.photoTitle = (const SceWChar32 *)title16;
+	param.gameTitle = (const SceWChar32 *)app16;
 	out[0] = '\0';
-	return scePhotoExportFromFile(src, &param, work, NULL, NULL, out, (SceSize)out_size);
+	int rc = scePhotoExportFromFile(src, &param, work, NULL, NULL, out, (SceSize)out_size);
+	ux0_path(out, out_size);
+	return rc;
 }
 
 int photos_share(const LibraryItem *themes, int count, char *err, size_t err_size) {

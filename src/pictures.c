@@ -1,7 +1,10 @@
 #include "pictures.h"
 
 #include "fs.h"
+#include "log.h"
 #include "photos.h"
+
+#include <psp2/kernel/threadmgr.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,7 +67,13 @@ static int visit(const char *name, int is_dir, void *user) {
 }
 
 static void walk(Walk *w) {
-	fs_list_dir(w->dir, visit, w);
+	if (fs_list_dir(w->dir, visit, w) == 0 || w->depth > 0)
+		return;
+	// ux0:picture can be briefly unreadable while the system updates its
+	// photo index (right after screenshots were deleted, say): try once more.
+	sceKernelDelayThread(500 * 1000);
+	if (fs_list_dir(w->dir, visit, w) != 0)
+		log_write("pictures: couldn't list %s", w->dir);
 }
 
 static int by_folder_newest(const void *a, const void *b) {
