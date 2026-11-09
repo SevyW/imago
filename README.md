@@ -15,11 +15,14 @@ And it doesn't stop at themes: the **Apps** tab restyles any app's bubble icon, 
 ![Built with](https://img.shields.io/badge/vibe--coded%20with-Claude-d97757?logo=anthropic&logoColor=white)
 ![Version](https://img.shields.io/badge/version-1.3.0-c2292f)
 ![Downloads](https://img.shields.io/github/downloads/SevyW/imago/total)
-![Status](https://img.shields.io/badge/status-console--tested-3fa35b)
+![Status](https://img.shields.io/badge/status-unmaintained-8a8a8a)
 ![License](https://img.shields.io/badge/license-MIT-f6eede)
 [![Ko-fi](https://img.shields.io/badge/support%20me-Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/sevyw)
 
 </div>
+
+> [!IMPORTANT]
+> **Imago is no longer maintained.** I've sold my PS Vita, so I can't test or fix anything any more. The [releases](https://github.com/SevyW/imago/releases) stay up and keep working, and the code is MIT-licensed: fork it, improve it, ship your own version. [Build on Imago](#-build-on-imago) has ideas and everything you need to get started.
 
 > [!NOTE]
 > **Created by [Sevy](https://github.com/SevyW), vibe-coded with Claude.**
@@ -225,7 +228,7 @@ Choose a part of an app, then **Search online**. The search starts with the app'
 | [RAWG](https://rawg.io) | Backgrounds and screenshots | Free for personal use: [Get API Key](https://rawg.io/apidocs) |
 
 > [!NOTE]
-> VitaDB, the PlayStation Store and SteamGridDB are tested on a real PS Vita. **IGDB, TheGamesDB and RAWG are written to their documentation but haven't been tried with real keys yet.** If you use one, please [tell us how it went](https://github.com/SevyW/imago/issues). The PlayStation Store's search isn't a public API, so it may stop working one day.
+> VitaDB, the PlayStation Store and SteamGridDB are tested on a real PS Vita. **IGDB, TheGamesDB and RAWG are written to their documentation but haven't been tried with real keys yet.** They're a good first project for a fork ([Build on Imago](#-build-on-imago)). The PlayStation Store's search isn't a public API, so it may stop working one day.
 
 #### Adding a key
 
@@ -404,18 +407,32 @@ Once it's in Imago, the **Assets** tab plays its music and shows its wallpapers,
 
 </details>
 
-## 🐞 Something not working?
+## 🧩 Build on Imago
 
-Please [open an issue](https://github.com/SevyW/imago/issues/new?template=bug_report.yml) and attach Imago's log, which is what makes a problem fixable:
+Imago is finished as far as I'm concerned, but it doesn't have to be. Everything is here under the MIT License: fork it, rename it, change it and release it. Keep the licence notice; a link back is appreciated but not required.
 
-1. In VitaShell, copy `ux0:data/Imago/log.txt` to your PC (over USB, or FTP from VitaShell's START menu). If there's also a `log-previous.txt`, take that too.
-2. Say what you were doing when it happened, and drag the files into the issue.
+**Getting started:**
 
-The log lists what Imago did (the screens you visited, installs and saves with their results, any errors), with your Imago version and firmware at the top. It never contains anything personal. *Settings › Report a problem* in the app shows the same steps.
+- [Building](#-building) and [Checks](#-checks) above get you from a fresh clone to a VPK and passing tests. The risky parts (the theme database, zip extraction, the Apps tab's backups) are all unit-tested on a PC.
+- [Project layout](#️-project-layout) says where everything lives.
+- **Test without a console:** build with `-DIMAGO_AUTOPILOT=ON` and run it in [Vita3K](https://vita3k.org). It replays `ux0:data/Imago/autopilot.txt`: one step per line, `<frame> <BUTTON>` (`CROSS`, `L`, `DOWN`…), `<frame> TYPE Some_text` to answer the keyboard, and `<frame> SHOT` to save a screenshot. `tools/mock_vita3k.py` gives Vita3K some apps for the Apps tab.
+- **Test on a console:** `tools/vita.py` drives a real Vita running the [vitacompanion](https://github.com/devnoname120/vitacompanion) plugin over Wi-Fi: launch, tap, press buttons, take screenshots, swap in a new `eboot.bin`. Set `VITA_IP` to the console's address.
+
+**Ideas, if you're looking for something to do:**
+
+- **Downloads that stall** on some networks ([#1](https://github.com/SevyW/imago/issues/1)). psvt.ovh can't resume a download, so either retry the whole file when it stalls, or download through the Vita's own `SceHttp` like Custom Themes Manager does.
+- **Untested artwork sources:** IGDB, TheGamesDB and RAWG are written to their documentation but were never tried with real keys.
+- **Translations:** move the interface text into a table, follow the console's language, and add a *Language* switch in Settings. Portuguese was the next one planned.
+- **livearea_nolimits:** two people reported that switching themes crashes with that plugin installed (I couldn't reproduce it on v2.1.0 with 11+ pages). Warning users when it's installed, or finding the cause with [the plugin's author](https://github.com/devnoname120/livearea_nolimits), would save people database rebuilds.
+- **An update check** against your fork's GitHub releases, so people hear about new versions.
+- **A second theme source**, such as vstema.com, next to psvt.ovh.
+- **PS TV:** it should work, but it was never tried.
+
+If you build something from Imago, I'd love to see it.
 
 ## ☕ Support
 
-Imago is free and always will be. If it made your Vita a little more yours, you can [buy me a coffee on Ko-fi](https://ko-fi.com/sevyw). It's never expected, always appreciated. And please consider [supporting psvt.ovh](https://gofund.me/e8f1d6c4) too: it's where all these themes live.
+Imago is free and always will be. If it made your Vita a little more yours, you can still [buy me a coffee on Ko-fi](https://ko-fi.com/sevyw). It's never expected, always appreciated. And please consider [supporting psvt.ovh](https://gofund.me/e8f1d6c4) too: it's where all these themes live.
 
 ## 🙏 Credits
 
